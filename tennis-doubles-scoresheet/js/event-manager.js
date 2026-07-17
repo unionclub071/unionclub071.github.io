@@ -365,6 +365,8 @@ class EventManager {
      */
     _saveEvents() {
         localStorage.setItem('tennis-events', JSON.stringify(this.events));
+        // Sync events list to Firebase
+        this.app?.sync?.saveEventsList(this.events);
     }
 
     /**

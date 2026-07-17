@@ -328,6 +328,21 @@ class TennisScoreSheet {
         if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
 
+    // ─── QR Code ────────────────────────────────────────────────────────────
+
+    showQrCode() {
+        const modal = document.getElementById('qr-modal');
+        const container = document.getElementById('qr-code-container');
+        if (!modal || !container) return;
+
+        const appUrl = 'https://unionclub071.github.io/tennis-doubles-scoresheet/';
+        
+        // Generate QR code using a free API (no library needed)
+        container.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(appUrl)}" alt="QR Code" width="200" height="200">`;
+        
+        modal.classList.remove('hidden');
+    }
+
     // ─── Sound Effects (Task 9.1) ───────────────────────────────────────────
 
     initSounds() {
@@ -1043,6 +1058,9 @@ class TennisScoreSheet {
                 records = [...imported, ...records];
                 if (records.length > 100) records = records.slice(0, 100);
                 localStorage.setItem(key, JSON.stringify(records));
+                // Sync imported matches to Firebase
+                this.sync.saveMatchHistory(null, records);
+                imported.forEach(r => this.sync.saveMatch(r));
                 this.renderHistoryPage();
                 alert(`Imported ${imported.length} matches.`);
             } catch (err) {
@@ -1057,6 +1075,8 @@ class TennisScoreSheet {
         if (!confirm('Clear all match history for this event?')) return;
         const key = this.eventManager.getMatchHistoryKey();
         localStorage.removeItem(key);
+        // Sync clear to Firebase
+        this.sync.clearMatchHistory(null);
         this.renderHistoryPage();
     }
 
@@ -1518,6 +1538,15 @@ class TennisScoreSheet {
                 this.memberManager.renderMembersPage();
                 this.populateMemberPickers();
             } catch (err) { alert(err.message); }
+        });
+
+        // QR Code modal
+        document.getElementById('btn-show-qr')?.addEventListener('click', () => this.showQrCode());
+        document.getElementById('btn-close-qr')?.addEventListener('click', () => {
+            document.getElementById('qr-modal')?.classList.add('hidden');
+        });
+        document.getElementById('qr-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'qr-modal') document.getElementById('qr-modal')?.classList.add('hidden');
         });
 
         // Side change notification dismiss

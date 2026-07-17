@@ -338,4 +338,82 @@ class FirebaseSync {
     _getEventId() {
         return this.app?.eventManager?.getActiveEventId() || null;
     }
+
+    // ─── Save Events List ─────────────────────────────────────────────────────
+
+    /**
+     * Sync the full events list to Firebase.
+     * Path: appData/events
+     */
+    async saveEventsList(events) {
+        if (!this.db) return;
+        try {
+            await this.db.collection('appData').doc('events').set({
+                events: events,
+                lastModified: Date.now()
+            });
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save events list:', e);
+        }
+    }
+
+    // ─── Save Match History (full array sync) ─────────────────────────────────
+
+    /**
+     * Sync the entire match history array to Firebase for an event.
+     * Used after import or clear operations.
+     * Path: events/{eventId}/appData/matchHistory
+     */
+    async saveMatchHistory(eventId, records) {
+        if (!this.db) return;
+        if (!eventId) eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+            await this.db.collection('events').doc(eventId)
+                .collection('appData').doc('matchHistory').set({
+                    records: records,
+                    lastModified: Date.now()
+                });
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save match history:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Clear Match History from Firebase ────────────────────────────────────
+
+    /**
+     * Remove all match data from Firebase for an event.
+     * Path: events/{eventId}/matches/* and events/{eventId}/appData/matchHistory
+     */
+    async clearMatchHistory(eventId) {
+        if (!this.db) return;
+        if (!eventId) eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+
+            // Delete individual match documents
+            const snapshot = await this.db.collection('events').doc(eventId)
+                .collection('matches').get();
+            if (!snapshot.empty) {
+                const batch = this.db.batch();
+                snapshot.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+            }
+
+            // Delete the matchHistory aggregate doc
+            await this.db.collection('events').doc(eventId)
+                .collection('appData').doc('matchHistory').delete();
+
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to clear match history:', e);
+            this._updateSyncStatus(false);
+        }
+    }
 }
