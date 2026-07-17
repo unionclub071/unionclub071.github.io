@@ -328,6 +328,35 @@ class TennisScoreSheet {
         if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
     }
 
+    // ─── QR Code Sharing ────────────────────────────────────────────────────
+
+    showQRCode() {
+        const modal = document.getElementById('qr-modal');
+        const container = document.getElementById('qr-code-container');
+        if (!modal || !container) return;
+
+        const appUrl = window.location.href || 'https://unionclub071.github.io/tennis-doubles-scoresheet/';
+
+        // Generate QR code using qrcode-generator library
+        if (typeof qrcode !== 'undefined') {
+            container.innerHTML = '';
+            const qr = qrcode(0, 'M');
+            qr.addData(appUrl);
+            qr.make();
+            container.innerHTML = qr.createImgTag(5, 8);
+        } else {
+            // Fallback: show URL as text
+            container.innerHTML = `<p style="font-size:0.8rem; color:var(--text-secondary);">QR library not loaded. Share this URL:<br><strong>${appUrl}</strong></p>`;
+        }
+
+        modal.classList.remove('hidden');
+    }
+
+    hideQRCode() {
+        const modal = document.getElementById('qr-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
     // ─── QR Code ────────────────────────────────────────────────────────────
 
     showQrCode() {
@@ -1428,6 +1457,13 @@ class TennisScoreSheet {
 
         // Theme
         document.getElementById('btn-theme-toggle')?.addEventListener('click', () => this.toggleTheme());
+
+        // QR Code
+        document.getElementById('btn-show-qr')?.addEventListener('click', () => this.showQRCode());
+        document.getElementById('btn-close-qr')?.addEventListener('click', () => this.hideQRCode());
+        document.getElementById('qr-modal')?.addEventListener('click', (e) => {
+            if (e.target.id === 'qr-modal') this.hideQRCode();
+        });
 
         // Summary actions
         document.getElementById('btn-new-match')?.addEventListener('click', () => this.newMatch());

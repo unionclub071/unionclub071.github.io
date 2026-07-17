@@ -1112,3 +1112,59 @@ select:focus, input:focus {
   color: var(--text-secondary);
   margin-bottom: 16px;
 }
+
+
+/* --- QR Code Modal --- */
+.qr-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.qr-modal-content {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  max-width: 320px;
+  width: 100%;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px var(--shadow);
+}
+
+.qr-modal-content h3 {
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.qr-url {
+  font-size: 0.65rem;
+  color: var(--accent);
+  word-break: break-all;
+  margin-bottom: 16px;
+}
+
+.qr-code-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.qr-code-container img,
+.qr-code-container canvas {
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.qr-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+}
