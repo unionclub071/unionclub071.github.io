@@ -1,0 +1,341 @@
+/**
+ * FirebaseSync - Cloud synchronization layer for Tennis Doubles Scoresheet
+ * 
+ * Integrates with Firebase Firestore for real-time data synchronization.
+ * All methods gracefully handle Firebase unavailability — the app continues
+ * to function using localStorage only when Firebase is not configured or
+ * the network is offline.
+ * 
+ * Firestore path structure:
+ *   events/{eventId}/matches/{matchId}        - Completed match records
+ *   events/{eventId}/playerRegistry/data      - Member list (player names)
+ *   events/{eventId}/members/{memberId}       - Individual member documents
+ *   events/{eventId}/appData/activeMatch      - Active match state for sharing
+ * 
+ * Requirements: 19.1, 19.2, 19.3, 19.4, 19.6, 19.7
+ */
+
+class FirebaseSync {
+    constructor(app) {
+        this.app = app;
+        this.db = null;
+        this.isOnline = false;
+        this._activeWriteTimer = null;
+        this._pendingActiveState = null;
+
+        this._initFirebase();
+    }
+
+    // ─── Firebase Initialization ──────────────────────────────────────────────
+
+    /**
+     * Initialize Firebase with placeholder config.
+     * Users should replace the config values with their own Firebase project credentials.
+     * If Firebase SDK is not loaded or config is not set, the app runs in localStorage-only mode.
+     */
+    _initFirebase() {
+        // Firebase project configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyAiHYFcERToHbXoRyxqKhrZOvnKlMq5-gE",
+            authDomain: "tennis-doubles-scoresheet.firebaseapp.com",
+            projectId: "tennis-doubles-scoresheet",
+            storageBucket: "tennis-doubles-scoresheet.firebasestorage.app",
+            messagingSenderId: "996533289928",
+            appId: "1:996533289928:web:5bf390ac2788963512f6fd"
+        };
+
+        try {
+            // Only initialize if Firebase SDK is available
+            if (typeof firebase !== 'undefined' && firebaseConfig.apiKey) {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                this.db = firebase.firestore();
+                this.isOnline = true;
+                this._updateSyncStatus(true);
+                this._startConnectivityMonitor();
+            } else {
+                this._updateSyncStatus(false);
+            }
+        } catch (e) {
+            console.warn('[FirebaseSync] Init failed:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Connectivity Monitoring ──────────────────────────────────────────────
+
+    /**
+     * Listen for online/offline events to update sync status indicator.
+     */
+    _startConnectivityMonitor() {
+        window.addEventListener('online', () => {
+            this.isOnline = true;
+            this._updateSyncStatus(true);
+        });
+
+        window.addEventListener('offline', () => {
+            this.isOnline = false;
+            this._updateSyncStatus(false);
+        });
+
+        // Set initial status
+        if (!navigator.onLine) {
+            this.isOnline = false;
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Save Match (Requirement 19.2) ────────────────────────────────────────
+
+    /**
+     * Save a completed match record to Firestore under the active event.
+     * Path: events/{eventId}/matches/{matchId}
+     * @param {object} record - The match history record with an `id` field
+     */
+    async saveMatch(record) {
+        if (!this.db) return;
+        const eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+            const data = { ...record, lastModified: Date.now() };
+            await this.db.collection('events').doc(eventId)
+                .collection('matches').doc(String(record.id)).set(data);
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save match:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Save Player Registry (Requirement 19.3) ──────────────────────────────
+
+    /**
+     * Sync the player names (member list) to Firebase for the active event.
+     * Path: events/{eventId}/playerRegistry/data
+     * @param {string[]} names - Array of player name strings
+     */
+    async savePlayerRegistry(names) {
+        if (!this.db) return;
+        const eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+            await this.db.collection('events').doc(eventId)
+                .collection('playerRegistry').doc('data').set({
+                    names: names,
+                    lastModified: Date.now()
+                });
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save player registry:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Save Individual Member ───────────────────────────────────────────────
+
+    /**
+     * Sync an individual member document to Firebase.
+     * Path: events/{eventId}/members/{memberId}
+     * @param {string} eventId - The event ID
+     * @param {object} member - Member object with id and name
+     */
+    async saveMember(eventId, member) {
+        if (!this.db) return;
+        if (!eventId || !member) return;
+
+        try {
+            await this.db.collection('events').doc(eventId)
+                .collection('members').doc(member.id).set({
+                    ...member,
+                    lastModified: Date.now()
+                });
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save member:', e);
+        }
+    }
+
+    // ─── Delete Member Document ───────────────────────────────────────────────
+
+    /**
+     * Delete a member document from Firebase.
+     * Path: events/{eventId}/members/{memberId}
+     * @param {string} eventId - The event ID
+     * @param {string} memberId - The member ID to delete
+     */
+    async deleteMemberDoc(eventId, memberId) {
+        if (!this.db) return;
+        if (!eventId || !memberId) return;
+
+        try {
+            await this.db.collection('events').doc(eventId)
+                .collection('members').doc(memberId).delete();
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to delete member:', e);
+        }
+    }
+
+    // ─── Save Active Match (Requirement 19.4) ─────────────────────────────────
+
+    /**
+     * Sync the active match state to Firebase for real-time sharing.
+     * Uses a debounce (2 second delay) to avoid excessive writes during rapid scoring.
+     * Path: events/{eventId}/appData/activeMatch
+     * @param {object} state - The full active match state object
+     */
+    saveActiveMatch(state) {
+        if (!this.db) return;
+        this._debouncedActiveMatchWrite(state);
+    }
+
+    /**
+     * Debounce mechanism for active match writes.
+     * Queues writes and flushes after 2 seconds of inactivity.
+     */
+    _debouncedActiveMatchWrite(state) {
+        this._pendingActiveState = state;
+        if (this._activeWriteTimer) return; // Already scheduled
+
+        this._activeWriteTimer = setTimeout(async () => {
+            this._activeWriteTimer = null;
+            if (this._pendingActiveState) {
+                await this._writeActiveMatch(this._pendingActiveState);
+                this._pendingActiveState = null;
+            }
+        }, 2000);
+    }
+
+    /**
+     * Internal: perform the actual Firestore write for active match state.
+     */
+    async _writeActiveMatch(state) {
+        const eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+            await this.db.collection('events').doc(eventId)
+                .collection('appData').doc('activeMatch').set({
+                    ...state,
+                    lastModified: Date.now()
+                });
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to save active match:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Clear Active Match ───────────────────────────────────────────────────
+
+    /**
+     * Remove the active match document from Firebase when a match ends.
+     * Path: events/{eventId}/appData/activeMatch
+     */
+    async clearActiveMatch() {
+        if (!this.db) return;
+        const eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            await this.db.collection('events').doc(eventId)
+                .collection('appData').doc('activeMatch').delete();
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to clear active match:', e);
+        }
+    }
+
+    // ─── Delete Event Data (Requirement 19.7) ─────────────────────────────────
+
+    /**
+     * Remove all Firebase data associated with a deleted event.
+     * Deletes the event document and attempts to clean up subcollections
+     * (matches, playerRegistry, members, appData).
+     * @param {string} eventId - The event ID to remove
+     */
+    async deleteEventData(eventId) {
+        if (!this.db) return;
+        if (!eventId) return;
+
+        try {
+            this._updateSyncStatus(true, 'syncing');
+
+            // Delete subcollection documents (Firestore doesn't cascade-delete)
+            const subcollections = ['matches', 'playerRegistry', 'members', 'appData'];
+            for (const sub of subcollections) {
+                const snapshot = await this.db.collection('events').doc(eventId)
+                    .collection(sub).get();
+                const batch = this.db.batch();
+                snapshot.forEach(doc => {
+                    batch.delete(doc.ref);
+                });
+                if (!snapshot.empty) {
+                    await batch.commit();
+                }
+            }
+
+            // Delete the event document itself
+            await this.db.collection('events').doc(eventId).delete();
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.error('[FirebaseSync] Failed to delete event data:', e);
+            this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Sync Status UI (Requirement 19.5, 19.6) ─────────────────────────────
+
+    /**
+     * Update the sync status indicator in the app header.
+     * Shows online/offline/syncing state.
+     * @param {boolean} online - Whether Firebase is connected
+     * @param {string} [status] - Override status: 'syncing', 'synced', 'offline'
+     */
+    _updateSyncStatus(online, status) {
+        const el = document.getElementById('sync-status');
+        if (!el) return;
+
+        let displayStatus;
+        if (status === 'syncing') {
+            displayStatus = 'syncing';
+        } else if (online) {
+            displayStatus = 'synced';
+        } else {
+            displayStatus = 'offline';
+        }
+
+        el.className = `sync-indicator sync-${displayStatus}`;
+
+        const labelEl = el.querySelector('.sync-label');
+        if (labelEl) {
+            const labels = {
+                synced: 'Synced',
+                syncing: 'Syncing…',
+                offline: 'Offline'
+            };
+            labelEl.textContent = labels[displayStatus] || 'Offline';
+        }
+
+        const titles = {
+            synced: 'All data synced to cloud',
+            syncing: 'Syncing data…',
+            offline: 'Working offline (localStorage only)'
+        };
+        el.title = titles[displayStatus] || 'Sync Status';
+    }
+
+    // ─── Helper: Get Active Event ID ──────────────────────────────────────────
+
+    /**
+     * Get the currently active event ID from the EventManager.
+     * @returns {string|null} The active event ID or null
+     */
+    _getEventId() {
+        return this.app?.eventManager?.getActiveEventId() || null;
+    }
+}

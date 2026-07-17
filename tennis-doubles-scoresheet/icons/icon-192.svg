@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="24" fill="#1a1a2e"/>
+  <circle cx="96" cy="96" r="56" fill="none" stroke="#4ade80" stroke-width="6"/>
+  <path d="M96 40 C60 60, 60 132, 96 152" fill="none" stroke="#4ade80" stroke-width="3"/>
+  <path d="M96 40 C132 60, 132 132, 96 152" fill="none" stroke="#4ade80" stroke-width="3"/>
+  <line x1="40" y1="96" x2="152" y2="96" stroke="#4ade80" stroke-width="3"/>
+  <text x="96" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#4ade80">TENNIS</text>
+</svg>

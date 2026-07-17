@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tennis Doubles Scoresheet</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="theme-color" content="#4CAF50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h1>🎾 Tennis Doubles Scoresheet</h1>
+            <div class="header-controls">
+                <button class="btn btn-icon" id="btn-theme-toggle" title="Toggle Theme">🌙</button>
+                <button class="btn btn-icon" id="btn-show-history" title="Match History">📜</button>
+                <button class="btn btn-icon" id="btn-show-leaderboard" title="Leaderboard">🏆</button>
+                <span id="sync-status" class="sync-indicator sync-offline" title="Offline">
+                    <span class="sync-dot"></span>
+                    <span class="sync-label">Offline</span>
+                </span>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-section="setup-section">New Match</button>
+            <button class="nav-tab" data-section="history-page">History</button>
+            <button class="nav-tab" data-section="leaderboard-page">Leaderboard</button>
+            <button class="nav-tab" data-section="events-page">Events</button>
+        </nav>
+
+        <!-- Match Setup -->
+        <section id="setup-section" class="section">
+            <h2>Match Setup</h2>
+            <div class="event-selector-container" id="event-selector-setup"></div>
+            <div class="setup-grid">
+                <div class="team-setup">
+                    <h3>Team A</h3>
+                    <select id="teamA-player1" class="member-picker"><option value="">Select Player...</option></select>
+                    <input type="text" id="teamA-player1-new" placeholder="Type new name..." class="member-new-input hidden">
+                    <select id="teamA-player2" class="member-picker"><option value="">Select Player...</option></select>
+                    <input type="text" id="teamA-player2-new" placeholder="Type new name..." class="member-new-input hidden">
+                </div>
+                <div class="team-setup">
+                    <h3>Team B</h3>
+                    <select id="teamB-player1" class="member-picker"><option value="">Select Player...</option></select>
+                    <input type="text" id="teamB-player1-new" placeholder="Type new name..." class="member-new-input hidden">
+                    <select id="teamB-player2" class="member-picker"><option value="">Select Player...</option></select>
+                    <input type="text" id="teamB-player2-new" placeholder="Type new name..." class="member-new-input hidden">
+                </div>
+            </div>
+            <div class="match-options">
+                <label>Match Format:
+                    <select id="match-format">
+                        <option value="3" selected>Best of 3 Sets</option>
+                        <option value="2">Best of 2 Sets (match tiebreak)</option>
+                    </select>
+                </label>
+            </div>
+            <div class="service-order-config">
+                <label>Service Order:
+                    <select id="service-order">
+                        <option value="0,1,2,3" selected>A1 → B1 → A2 → B2</option>
+                        <option value="0,2,1,3">A1 → A2 → B1 → B2</option>
+                        <option value="1,0,3,2">B1 → A1 → B2 → A2</option>
+                        <option value="1,3,0,2">B1 → B2 → A1 → A2</option>
+                    </select>
+                </label>
+            </div>
+            <button id="start-match" class="btn btn-primary">Start Match</button>
+        </section>
+
+        <!-- Scoreboard -->
+        <section id="scoreboard-section" class="section hidden">
+            <!-- STICKY HEADER -->
+            <div id="sticky-header" class="sticky-header">
+                <!-- Service Row -->
+                <div class="service-row">
+                    <span class="service-info" id="service-info">
+                        <span class="service-icon">🎾</span> <span id="server-name">Server</span>
+                    </span>
+                    <span class="set-info" id="set-info">Set 1</span>
+                    <span class="game-score" id="game-score">Games: 0-0</span>
+                </div>
+
+                <!-- Score Display Row -->
+                <div class="score-row">
+                    <button class="btn btn-score-tap" id="btn-scoreA">+Point</button>
+                    <div class="score-display">
+                        <span class="team-label" id="team-a-label">Team A</span>
+                        <span class="score" id="scoreA">0</span>
+                        <span class="score-divider">—</span>
+                        <span class="score" id="scoreB">0</span>
+                        <span class="team-label" id="team-b-label">Team B</span>
+                    </div>
+                    <button class="btn btn-score-tap" id="btn-scoreB">+Point</button>
+                </div>
+
+                <!-- Game/Set Score Display -->
+                <div class="game-set-display">
+                    <div class="games-display">
+                        <span id="games-current-set">Games: 0 - 0</span>
+                    </div>
+                    <div class="sets-display">
+                        <span id="sets-won">Sets: 0 - 0</span>
+                    </div>
+                </div>
+
+                <!-- Tiebreak Indicator -->
+                <div id="tiebreak-indicator" class="tiebreak-indicator hidden">
+                    <span>🔥 Tiebreak</span>
+                </div>
+
+                <!-- Per-Player Error Icons -->
+                <div class="error-icons-section">
+                    <div class="error-icons-team error-icons-team-a">
+                        <span class="error-icons-player-name" id="error-player-a1-name">A1</span>
+                        <div class="error-icons-row" data-team="A" data-player="0">
+                            <button class="error-icon-btn" data-error="double-fault" title="Double Fault">🔴</button>
+                            <button class="error-icon-btn" data-error="unforced-error" title="Unforced Error">❌</button>
+                            <button class="error-icon-btn" data-error="forced-error" title="Forced Error">💪</button>
+                            <button class="error-icon-btn" data-error="foot-fault" title="Foot Fault">👟</button>
+                            <button class="error-icon-btn" data-error="net-fault" title="Net Fault">🥅</button>
+                            <button class="error-icon-btn" data-error="out" title="Out">📤</button>
+                            <button class="error-icon-btn" data-error="let" title="Let">🔄</button>
+                            <button class="error-icon-btn" data-error="other" title="Other">⚡</button>
+                        </div>
+                        <span class="error-icons-player-name" id="error-player-a2-name">A2</span>
+                        <div class="error-icons-row" data-team="A" data-player="1">
+                            <button class="error-icon-btn" data-error="double-fault" title="Double Fault">🔴</button>
+                            <button class="error-icon-btn" data-error="unforced-error" title="Unforced Error">❌</button>
+                            <button class="error-icon-btn" data-error="forced-error" title="Forced Error">💪</button>
+                            <button class="error-icon-btn" data-error="foot-fault" title="Foot Fault">👟</button>
+                            <button class="error-icon-btn" data-error="net-fault" title="Net Fault">🥅</button>
+                            <button class="error-icon-btn" data-error="out" title="Out">📤</button>
+                            <button class="error-icon-btn" data-error="let" title="Let">🔄</button>
+                            <button class="error-icon-btn" data-error="other" title="Other">⚡</button>
+                        </div>
+                    </div>
+                    <div class="error-icons-team error-icons-team-b">
+                        <span class="error-icons-player-name" id="error-player-b1-name">B1</span>
+                        <div class="error-icons-row" data-team="B" data-player="0">
+                            <button class="error-icon-btn" data-error="double-fault" title="Double Fault">🔴</button>
+                            <button class="error-icon-btn" data-error="unforced-error" title="Unforced Error">❌</button>
+                            <button class="error-icon-btn" data-error="forced-error" title="Forced Error">💪</button>
+                            <button class="error-icon-btn" data-error="foot-fault" title="Foot Fault">👟</button>
+                            <button class="error-icon-btn" data-error="net-fault" title="Net Fault">🥅</button>
+                            <button class="error-icon-btn" data-error="out" title="Out">📤</button>
+                            <button class="error-icon-btn" data-error="let" title="Let">🔄</button>
+                            <button class="error-icon-btn" data-error="other" title="Other">⚡</button>
+                        </div>
+                        <span class="error-icons-player-name" id="error-player-b2-name">B2</span>
+                        <div class="error-icons-row" data-team="B" data-player="1">
+                            <button class="error-icon-btn" data-error="double-fault" title="Double Fault">🔴</button>
+                            <button class="error-icon-btn" data-error="unforced-error" title="Unforced Error">❌</button>
+                            <button class="error-icon-btn" data-error="forced-error" title="Forced Error">💪</button>
+                            <button class="error-icon-btn" data-error="foot-fault" title="Foot Fault">👟</button>
+                            <button class="error-icon-btn" data-error="net-fault" title="Net Fault">🥅</button>
+                            <button class="error-icon-btn" data-error="out" title="Out">📤</button>
+                            <button class="error-icon-btn" data-error="let" title="Let">🔄</button>
+                            <button class="error-icon-btn" data-error="other" title="Other">⚡</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-undo" id="btn-undo">↩ Undo</button>
+            </div>
+
+            <!-- Side Change Notification -->
+            <div id="side-change-notification" class="side-change-notification hidden">
+                <span>🔄 Change Sides!</span>
+            </div>
+
+            <!-- SCROLLABLE CONTENT -->
+            <div class="scrollable-content">
+                <div class="history-section">
+                    <h3>Point History</h3>
+                    <div id="point-history" class="point-history"></div>
+                </div>
+
+                <div class="voice-controls">
+                    <button class="btn btn-voice" id="btn-voice-command">🎤 Voice Command</button>
+                    <span id="voice-status" class="voice-status"></span>
+                    <div id="voice-help" class="voice-help hidden">
+                        <strong>Say:</strong> "point A", "point B", "A1 double fault", "B2 unforced error"<br>
+                        <em>Shortcodes: A1, A2, B1, B2 = Team + Player</em>
+                    </div>
+                </div>
+
+                <!-- Manual Error Entry -->
+                <details class="error-details">
+                    <summary>Manual Error Entry</summary>
+                    <div class="error-controls">
+                        <select id="error-team">
+                            <option value="A">Team A</option>
+                            <option value="B">Team B</option>
+                        </select>
+                        <select id="error-player">
+                            <option value="0">Player 1</option>
+                            <option value="1">Player 2</option>
+                        </select>
+                        <select id="error-type">
+                            <option value="double-fault">Double Fault</option>
+                            <option value="unforced-error">Unforced Error</option>
+                            <option value="forced-error">Forced Error</option>
+                            <option value="foot-fault">Foot Fault</option>
+                            <option value="net-fault">Net Fault</option>
+                            <option value="out">Out</option>
+                            <option value="let">Let</option>
+                            <option value="other">Other</option>
+                        </select>
+                        <button class="btn btn-error" id="btn-record-error">Record Error</button>
+                    </div>
+                </details>
+
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" id="btn-end-match">End Match</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Summary -->
+        <section id="summary-section" class="section hidden">
+            <h2>📊 Match Summary</h2>
+            <div id="match-result" class="match-result"></div>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h3>Set Results</h3>
+                    <div id="set-results"></div>
+                </div>
+                <div class="summary-card">
+                    <h3>Error Summary</h3>
+                    <div id="error-summary"></div>
+                </div>
+                <div class="summary-card">
+                    <h3>Player Errors</h3>
+                    <div id="player-errors"></div>
+                </div>
+                <div class="summary-card">
+                    <h3>Error Types</h3>
+                    <div id="error-types-summary"></div>
+                </div>
+            </div>
+            <div class="summary-actions">
+                <button class="btn btn-primary" id="btn-new-match">New Match</button>
+                <button class="btn btn-secondary" id="btn-save-summary">💾 Save Summary</button>
+                <button class="btn btn-secondary" id="btn-share-card">📷 Share Card</button>
+                <button class="btn btn-secondary" id="btn-print">🖨 Print</button>
+            </div>
+            <!-- Share card canvas (hidden) -->
+            <canvas id="share-canvas" style="display:none;"></canvas>
+        </section>
+
+        <!-- Match History Page -->
+        <section id="history-page" class="section hidden">
+            <h2>📜 Match History</h2>
+            <div class="event-selector-container" id="event-selector-history"></div>
+            <div class="history-filters">
+                <input type="text" id="history-search" placeholder="Search by player name..." class="filter-input">
+                <input type="date" id="history-date" class="filter-input">
+                <button class="btn btn-secondary btn-sm" id="btn-clear-filters">Clear</button>
+            </div>
+            <div id="history-list" class="history-list"></div>
+            <div class="history-actions">
+                <button class="btn btn-secondary btn-sm" id="btn-select-all-history">☑ Select All</button>
+                <button class="btn btn-secondary btn-sm" id="btn-export-history">📤 Export Selected</button>
+                <label class="btn btn-secondary btn-sm import-label">
+                    📥 Import
+                    <input type="file" id="btn-import-history" accept=".json" style="display:none;">
+                </label>
+                <button class="btn btn-error btn-sm" id="btn-clear-history">🗑 Clear All</button>
+            </div>
+        </section>
+
+        <!-- Leaderboard Page -->
+        <section id="leaderboard-page" class="section hidden">
+            <h2>🏆 Player Leaderboard</h2>
+            <div class="event-selector-container" id="event-selector-leaderboard"></div>
+            <div class="leaderboard-filters">
+                <label>From: <input type="date" id="leaderboard-from" class="filter-input"></label>
+                <label>To: <input type="date" id="leaderboard-to" class="filter-input"></label>
+                <button class="btn btn-secondary btn-sm" id="btn-leaderboard-filter">Apply</button>
+                <button class="btn btn-secondary btn-sm" id="btn-leaderboard-clear">Clear</button>
+            </div>
+            <div id="leaderboard-content" class="leaderboard-content"></div>
+        </section>
+
+        <!-- Events Management Page -->
+        <section id="events-page" class="section hidden">
+            <h2>📅 Events</h2>
+            <div class="event-add-form">
+                <input type="text" id="event-name-input" placeholder="New event name..." class="filter-input">
+                <button class="btn btn-primary btn-sm" id="btn-add-event">+ Add Event</button>
+            </div>
+            <div id="event-list" class="event-list"></div>
+
+            <!-- Members Management -->
+            <div id="members-section" class="members-section hidden">
+                <div class="members-header">
+                    <button class="btn btn-secondary btn-sm" id="btn-back-to-events">← Back to Events</button>
+                    <h3 id="members-event-title">Members</h3>
+                </div>
+                <div class="member-add-form">
+                    <input type="text" id="member-name-input" placeholder="New member name..." class="filter-input">
+                    <button class="btn btn-primary btn-sm" id="btn-add-member">+ Add</button>
+                </div>
+                <div id="members-list" class="members-list"></div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/event-manager.js"></script>
+    <script src="js/member-manager.js"></script>
+    <script src="js/firebase-sync.js"></script>
+    <script src="js/app.js"></script>
+
+    <!-- Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('Service Worker registered:', reg.scope))
+                    .catch(err => console.log('Service Worker registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
