@@ -248,8 +248,29 @@ select:focus, input:focus {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  padding: 12px 0;
+  gap: 8px;
+  padding: 8px 0;
+  flex: 1;
+}
+
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  width: 100%;
+}
+
+.score {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: var(--score-bg);
+  border-radius: 8px;
+  padding: 6px 14px;
+  min-width: 55px;
+  text-align: center;
+  display: inline-block;
 }
 
 .score-team {
@@ -258,9 +279,9 @@ select:focus, input:focus {
 }
 
 .score-team-name {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -282,6 +303,17 @@ select:focus, input:focus {
   font-size: 1.5rem;
   color: var(--text-muted);
   font-weight: 300;
+}
+
+.team-label {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  display: block;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
 }
 
 .game-set-row {
@@ -311,66 +343,57 @@ select:focus, input:focus {
   letter-spacing: 0.03em;
 }
 
-/* --- Error Icons Section --- */
+/* --- Error Icons Section (full width on mobile) --- */
 .error-icons-section {
-  padding: 12px 0;
+  padding: 8px 0;
+  width: 100%;
 }
 
-.error-players-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+.error-icons-team {
+  margin-bottom: 8px;
+  width: 100%;
 }
 
-.error-player-card {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 8px;
-  border: 1px solid var(--border);
-}
-
-.error-player-name {
+.error-icons-player-name {
   font-size: 0.7rem;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+  padding-left: 2px;
 }
 
-.error-buttons-row {
+.error-icons-row {
   display: flex;
-  flex-wrap: wrap;
   gap: 4px;
+  width: 100%;
+  margin-bottom: 6px;
 }
 
-.btn-error-icon {
-  width: 32px;
-  height: 32px;
+.error-icon-btn {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  font-size: 1.1rem;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-primary);
+  background: var(--bg-card);
   cursor: pointer;
   transition: background 0.2s, transform 0.1s;
+  padding: 0;
 }
 
-.btn-error-icon:hover {
+.error-icon-btn:hover {
   background: var(--bg-secondary);
-}
-
-.btn-error-icon:active {
-  transform: scale(0.9);
-}
-
-.btn-error-icon.active {
-  background: var(--accent);
-  color: var(--bg-primary);
   border-color: var(--accent);
+}
+
+.error-icon-btn:active {
+  transform: scale(0.9);
+  background: var(--accent);
 }
 
 /* --- Side Change Notification (Toast Overlay) --- */
@@ -794,25 +817,24 @@ select:focus, input:focus {
 }
 
 .btn-score-tap {
-  flex: 1;
-  padding: 20px 12px;
-  font-size: 1rem;
+  flex: 0 0 auto;
+  padding: 14px 10px;
+  font-size: 0.85rem;
   font-weight: 700;
-  border-radius: 12px;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  border: 2px solid var(--border);
-  min-height: 60px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #1a1a2e;
+  border: none;
+  min-height: 50px;
+  min-width: 65px;
 }
 
 .btn-score-tap:hover {
-  border-color: var(--accent);
-  background: var(--bg-secondary);
+  background: var(--accent-hover);
 }
 
 .btn-score-tap:active {
-  transform: scale(0.95);
-  border-color: var(--accent);
+  transform: scale(0.93);
 }
 
 .btn-undo {
