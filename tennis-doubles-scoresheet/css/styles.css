@@ -71,20 +71,20 @@ body {
   position: sticky;
   top: 0;
   z-index: 200;
-}
-
-.header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.app-title {
-  font-size: 1.1rem;
+.app-header h1 {
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--accent);
   white-space: nowrap;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-controls {
