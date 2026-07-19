@@ -287,7 +287,7 @@ class TennisScoreSheet {
         this.audioCtx = null;
         this.recognition = null;
         this.isListening = false;
-        this.voiceEnabled = true;
+        this.scoreVoiceEnabled = true;
         this.voiceOverEnabled = true;
 
         // Service tracking per team (alternates 0↔1 each time service returns)
@@ -658,6 +658,9 @@ class TennisScoreSheet {
             setTimeout(() => scoreEl.classList.remove('score-flash'), 300);
         }
 
+        // Announce score for plain +Point (no player action to announce)
+        this.announceScore(team);
+
         this.updateDisplay();
         this.saveActiveMatch();
     }
@@ -687,7 +690,11 @@ class TennisScoreSheet {
 
         // Game score in header
         const gameScore = document.getElementById('game-score');
-        if (gameScore) gameScore.textContent = `Games: ${currentSet.gamesA}-${currentSet.gamesB}`;
+        if (gameScore) gameScore.textContent = `${currentSet.gamesA}-${currentSet.gamesB}`;
+
+        // Current point score in header
+        const pointScoreDisplay = document.getElementById('point-score-display');
+        if (pointScoreDisplay) pointScoreDisplay.textContent = `${points.teamA}-${points.teamB}`;
 
         // Tiebreak indicator
         const ti = document.getElementById('tiebreak-indicator');
@@ -804,27 +811,33 @@ class TennisScoreSheet {
     }
 
     announceFault(team, playerName, errorTypeLabel) {
-        if (!this.voiceEnabled) return;
         if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance(`${playerName}, ${errorTypeLabel}`);
-        msg.rate = 1.2;
-        msg.volume = 0.7;
+        msg.rate = 1.0;
+        msg.volume = 0.8;
+        msg.lang = 'en-US';
+        // After fault announcement, announce score if enabled
+        msg.onend = () => {
+            setTimeout(() => this.announceScore(null), 300);
+        };
         window.speechSynthesis.speak(msg);
     }
 
     // ─── Voice-Over Toggle ──────────────────────────────────────────────────
 
     toggleVoiceOver() {
-        this.voiceEnabled = !this.voiceEnabled;
+        this.scoreVoiceEnabled = !this.scoreVoiceEnabled;
         const btn = document.getElementById('btn-voice-toggle');
         if (btn) {
-            btn.textContent = this.voiceEnabled ? '🔊' : '🔇';
-            btn.classList.toggle('voice-off', !this.voiceEnabled);
+            btn.textContent = this.scoreVoiceEnabled ? '🔊' : '🔇';
+            btn.title = this.scoreVoiceEnabled ? 'Score voice ON (tap to mute score)' : 'Score voice OFF (tap to enable)';
+            btn.classList.toggle('voice-off', !this.scoreVoiceEnabled);
         }
     }
 
     announceScore(team) {
-        if (!this.voiceEnabled) return;
+        if (!this.scoreVoiceEnabled) return;
         if (!('speechSynthesis' in window)) return;
         
         const points = this.engine.getCurrentPointScore();
@@ -853,7 +866,21 @@ class TennisScoreSheet {
         msg.rate = 0.9;
         msg.volume = 0.8;
         msg.lang = 'en-US';
+        window.speechSynthesis.speak(msg);
+    }
+
+    // Announce player action (always voiced, not controlled by toggle)
+    announceAction(playerName, actionLabel) {
+        if (!('speechSynthesis' in window)) return;
         window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(`${playerName}, ${actionLabel}`);
+        msg.rate = 1.0;
+        msg.volume = 0.8;
+        msg.lang = 'en-US';
+        // After action announcement, announce score if enabled
+        msg.onend = () => {
+            setTimeout(() => this.announceScore(null), 300);
+        };
         window.speechSynthesis.speak(msg);
     }
 
@@ -910,7 +937,7 @@ class TennisScoreSheet {
 
             const result = this.engine.scorePoint(team);
             this.playScoreSound();
-            this.announceScore(team);
+            this.announceAction(playerName, label);
 
             if (result.transition === 'GAME_WON') this.checkSideChange();
             else if (result.transition === 'MATCH_WON') { this.playWinSound(); this.endMatch(); return; }
@@ -1729,6 +1756,10 @@ class TennisScoreSheet {
 
         // Service Switch
         document.getElementById('btn-service-switch')?.addEventListener('click', () => this.showServiceSelector());
+
+        // +Point team buttons
+        document.getElementById('btn-pointA')?.addEventListener('click', () => this.addPoint('A'));
+        document.getElementById('btn-pointB')?.addEventListener('click', () => this.addPoint('B'));
 
         // Action buttons (positive/negative/neutral per player)
         document.querySelectorAll('.action-btn').forEach(btn => {

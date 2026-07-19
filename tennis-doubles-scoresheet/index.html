@@ -97,9 +97,9 @@
                 <!-- Score & Info Bar -->
                 <div class="score-info-bar">
                     <span class="service-info">🎾 <span id="server-name">Server</span></span>
-                    <span class="set-game-info"><span id="set-info">Set 1</span> | <span id="game-score">0-0</span></span>
+                    <span class="set-game-info"><span id="set-info">Set 1</span> | <span id="game-score">0-0</span> | <span id="point-score-display">0-0</span></span>
                     <span class="sets-info" id="sets-won">Sets: 0-0</span>
-                    <button class="btn btn-sm btn-voice-toggle" id="btn-voice-toggle" title="Toggle Voice">🔊</button>
+                    <button class="btn btn-sm btn-voice-toggle" id="btn-voice-toggle" title="Toggle Score Voice (player actions always voiced)">🔊</button>
                 </div>
 
                 <!-- Tiebreak indicator -->
@@ -110,6 +110,7 @@
                     <div class="team-score-header">
                         <span class="team-name" id="team-a-label">Team A</span>
                         <span class="team-points" id="scoreA">0</span>
+                        <button class="btn btn-point-team" id="btn-pointA" data-team="A">+Point</button>
                     </div>
 
                     <div class="player-scoring-block" data-team="A" data-player="0">
@@ -149,6 +150,7 @@
                     <div class="team-score-header">
                         <span class="team-name" id="team-b-label">Team B</span>
                         <span class="team-points" id="scoreB">0</span>
+                        <button class="btn btn-point-team" id="btn-pointB" data-team="B">+Point</button>
                     </div>
 
                     <div class="player-scoring-block" data-team="B" data-player="0">
