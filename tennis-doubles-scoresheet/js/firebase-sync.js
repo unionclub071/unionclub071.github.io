@@ -68,16 +68,20 @@ class FirebaseSync {
     // ─── Load Data from Firebase (sync down on startup) ───────────────────────
 
     /**
-     * On startup, download members and match history from Firebase
+     * On startup, download events, members and match history from Firebase
      * and merge into localStorage so other sessions see shared data.
      */
     async _loadFromFirebase() {
         if (!this.db) return;
-        const eventId = this._getEventId();
-        if (!eventId) return;
 
         try {
-            // Load members from Firebase and merge with local
+            // 1. First sync events list so all devices share the same event IDs
+            await this._syncEventsFromFirebase();
+
+            const eventId = this._getEventId();
+            if (!eventId) return;
+
+            // 2. Load members from Firebase and merge with local
             const membersSnapshot = await this.db.collection('events').doc(eventId)
                 .collection('members').get();
             
@@ -85,7 +89,6 @@ class FirebaseSync {
                 const firebaseMembers = membersSnapshot.docs.map(doc => doc.data());
                 const localMembers = this.app?.memberManager?.getMembers() || [];
                 
-                // Merge: add Firebase members not already in local (by name, case-insensitive)
                 const localNames = new Set(localMembers.map(m => m.name.toLowerCase()));
                 let added = 0;
                 
@@ -102,19 +105,17 @@ class FirebaseSync {
                 }
                 
                 if (added > 0) {
-                    // Save merged list to localStorage
                     const key = `tennis-members-${eventId}`;
                     localStorage.setItem(key, JSON.stringify(localMembers));
-                    // Reload member manager
                     this.app?.memberManager?.onEventChanged();
                     this.app?.populateMemberPickers?.();
                     console.log(`[FirebaseSync] Synced ${added} members from Firebase`);
                 }
             }
 
-            // Load match history from Firebase and merge with local
+            // 3. Load match history from Firebase and merge with local
             const matchesSnapshot = await this.db.collection('events').doc(eventId)
-                .collection('matches').orderBy('lastModified', 'desc').limit(100).get();
+                .collection('matches').get();
             
             if (!matchesSnapshot.empty) {
                 const firebaseMatches = matchesSnapshot.docs.map(doc => doc.data());
@@ -122,7 +123,6 @@ class FirebaseSync {
                 let localMatches = [];
                 try { localMatches = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { localMatches = []; }
                 
-                // Merge: add Firebase matches not already in local (by id)
                 const localIds = new Set(localMatches.map(m => String(m.id)));
                 let addedMatches = 0;
                 
@@ -135,7 +135,6 @@ class FirebaseSync {
                 }
                 
                 if (addedMatches > 0) {
-                    // Sort by date descending, cap at 100
                     localMatches.sort((a, b) => new Date(b.date) - new Date(a.date));
                     if (localMatches.length > 100) localMatches = localMatches.slice(0, 100);
                     localStorage.setItem(key, JSON.stringify(localMatches));
@@ -146,6 +145,70 @@ class FirebaseSync {
             this._updateSyncStatus(true);
         } catch (e) {
             console.warn('[FirebaseSync] Failed to load from Firebase:', e);
+        }
+    }
+
+    /**
+     * Sync events list from Firebase. This ensures all devices share the same event IDs.
+     * If Firebase has events that local doesn't, import them.
+     * Also uploads local events to Firebase if they don't exist there.
+     */
+    async _syncEventsFromFirebase() {
+        if (!this.db) return;
+
+        try {
+            // Download events from Firebase
+            const eventsDoc = await this.db.collection('appConfig').doc('events').get();
+            
+            if (eventsDoc.exists) {
+                const firebaseEvents = eventsDoc.data().list || [];
+                const localEvents = this.app?.eventManager?.getEvents() || [];
+                const localIds = new Set(localEvents.map(e => e.id));
+                
+                let changed = false;
+                
+                // Add Firebase events not in local
+                for (const fbEvent of firebaseEvents) {
+                    if (!localIds.has(fbEvent.id)) {
+                        localEvents.push(fbEvent);
+                        changed = true;
+                    }
+                }
+                
+                if (changed) {
+                    localStorage.setItem('tennis-events', JSON.stringify(localEvents));
+                    this.app?.eventManager?.init(); // Reinitialize to pick up new events
+                    this.app?.renderEventSelectors?.();
+                    console.log('[FirebaseSync] Synced events from Firebase');
+                }
+            }
+            
+            // Upload local events to Firebase (ensures first device's events are shared)
+            const localEvents = this.app?.eventManager?.getEvents() || [];
+            if (localEvents.length > 0) {
+                await this.db.collection('appConfig').doc('events').set({
+                    list: localEvents,
+                    lastModified: Date.now()
+                }, { merge: true });
+            }
+        } catch (e) {
+            console.warn('[FirebaseSync] Events sync failed:', e);
+        }
+    }
+
+    /**
+     * Save/upload events list to Firebase (call after event create/rename/delete)
+     */
+    async saveEvents() {
+        if (!this.db) return;
+        try {
+            const localEvents = this.app?.eventManager?.getEvents() || [];
+            await this.db.collection('appConfig').doc('events').set({
+                list: localEvents,
+                lastModified: Date.now()
+            });
+        } catch (e) {
+            console.warn('[FirebaseSync] Failed to save events to Firebase:', e);
         }
     }
 
