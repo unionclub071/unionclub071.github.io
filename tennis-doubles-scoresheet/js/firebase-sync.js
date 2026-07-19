@@ -54,12 +54,98 @@ class FirebaseSync {
                 this.isOnline = true;
                 this._updateSyncStatus(true);
                 this._startConnectivityMonitor();
+                // Load data from Firebase on init
+                this._loadFromFirebase();
             } else {
                 this._updateSyncStatus(false);
             }
         } catch (e) {
             console.warn('[FirebaseSync] Init failed:', e);
             this._updateSyncStatus(false);
+        }
+    }
+
+    // ─── Load Data from Firebase (sync down on startup) ───────────────────────
+
+    /**
+     * On startup, download members and match history from Firebase
+     * and merge into localStorage so other sessions see shared data.
+     */
+    async _loadFromFirebase() {
+        if (!this.db) return;
+        const eventId = this._getEventId();
+        if (!eventId) return;
+
+        try {
+            // Load members from Firebase and merge with local
+            const membersSnapshot = await this.db.collection('events').doc(eventId)
+                .collection('members').get();
+            
+            if (!membersSnapshot.empty) {
+                const firebaseMembers = membersSnapshot.docs.map(doc => doc.data());
+                const localMembers = this.app?.memberManager?.getMembers() || [];
+                
+                // Merge: add Firebase members not already in local (by name, case-insensitive)
+                const localNames = new Set(localMembers.map(m => m.name.toLowerCase()));
+                let added = 0;
+                
+                for (const fbMember of firebaseMembers) {
+                    if (fbMember.name && !localNames.has(fbMember.name.toLowerCase())) {
+                        localMembers.push({
+                            id: fbMember.id || `mbr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                            name: fbMember.name,
+                            createdDate: fbMember.createdDate || new Date().toISOString()
+                        });
+                        localNames.add(fbMember.name.toLowerCase());
+                        added++;
+                    }
+                }
+                
+                if (added > 0) {
+                    // Save merged list to localStorage
+                    const key = `tennis-members-${eventId}`;
+                    localStorage.setItem(key, JSON.stringify(localMembers));
+                    // Reload member manager
+                    this.app?.memberManager?.onEventChanged();
+                    this.app?.populateMemberPickers?.();
+                    console.log(`[FirebaseSync] Synced ${added} members from Firebase`);
+                }
+            }
+
+            // Load match history from Firebase and merge with local
+            const matchesSnapshot = await this.db.collection('events').doc(eventId)
+                .collection('matches').orderBy('lastModified', 'desc').limit(100).get();
+            
+            if (!matchesSnapshot.empty) {
+                const firebaseMatches = matchesSnapshot.docs.map(doc => doc.data());
+                const key = `tennis-match-history-${eventId}`;
+                let localMatches = [];
+                try { localMatches = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { localMatches = []; }
+                
+                // Merge: add Firebase matches not already in local (by id)
+                const localIds = new Set(localMatches.map(m => String(m.id)));
+                let addedMatches = 0;
+                
+                for (const fbMatch of firebaseMatches) {
+                    if (fbMatch.id && !localIds.has(String(fbMatch.id))) {
+                        localMatches.push(fbMatch);
+                        localIds.add(String(fbMatch.id));
+                        addedMatches++;
+                    }
+                }
+                
+                if (addedMatches > 0) {
+                    // Sort by date descending, cap at 100
+                    localMatches.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    if (localMatches.length > 100) localMatches = localMatches.slice(0, 100);
+                    localStorage.setItem(key, JSON.stringify(localMatches));
+                    console.log(`[FirebaseSync] Synced ${addedMatches} matches from Firebase`);
+                }
+            }
+
+            this._updateSyncStatus(true);
+        } catch (e) {
+            console.warn('[FirebaseSync] Failed to load from Firebase:', e);
         }
     }
 

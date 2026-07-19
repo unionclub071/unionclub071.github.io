@@ -1497,3 +1497,49 @@ select:focus, input:focus {
   pointer-events: none;
   cursor: not-allowed;
 }
+
+
+/* --- Merge Players Modal --- */
+.merge-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.merge-modal-content {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 340px;
+  width: 100%;
+  border: 1px solid var(--border);
+}
+
+.merge-modal-content h3 {
+  margin-bottom: 8px;
+  color: var(--text-primary);
+}
+
+.merge-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.merge-modal-content label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.merge-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}

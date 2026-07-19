@@ -1749,6 +1749,98 @@ class TennisScoreSheet {
         });
     }
 
+    // ─── Merge Players ──────────────────────────────────────────────────────
+
+    showMergeModal() {
+        const members = this.memberManager.getMembers();
+        if (members.length < 2) {
+            alert('Need at least 2 members to merge.');
+            return;
+        }
+
+        const mergeFrom = document.getElementById('merge-from');
+        const mergeTo = document.getElementById('merge-to');
+        if (!mergeFrom || !mergeTo) return;
+
+        // Populate both dropdowns with member names
+        const options = members.map(m => `<option value="${m.name}">${m.name}</option>`).join('');
+        mergeFrom.innerHTML = options;
+        mergeTo.innerHTML = options;
+
+        // Default: select different entries
+        if (members.length >= 2) {
+            mergeFrom.selectedIndex = 0;
+            mergeTo.selectedIndex = 1;
+        }
+
+        document.getElementById('merge-modal')?.classList.remove('hidden');
+    }
+
+    executeMerge() {
+        const fromName = document.getElementById('merge-from')?.value;
+        const toName = document.getElementById('merge-to')?.value;
+
+        if (!fromName || !toName) { alert('Select both names.'); return; }
+        if (fromName === toName) { alert('Select two different names.'); return; }
+
+        if (!confirm(`Replace all occurrences of "${fromName}" with "${toName}" in match history, then delete "${fromName}" from members?`)) return;
+
+        const eventId = this.eventManager.getActiveEventId();
+
+        // 1. Update match history — replace fromName with toName in all records
+        const historyKey = this.eventManager.getMatchHistoryKey(eventId);
+        let records = [];
+        try { records = JSON.parse(localStorage.getItem(historyKey)) || []; } catch (e) { records = []; }
+
+        let replacedCount = 0;
+        records.forEach(record => {
+            // Replace in teamA players
+            if (record.teamA?.players) {
+                record.teamA.players = record.teamA.players.map(p => {
+                    if (p === fromName) { replacedCount++; return toName; }
+                    return p;
+                });
+                record.teamA.name = record.teamA.players.join(' / ');
+            }
+            // Replace in teamB players
+            if (record.teamB?.players) {
+                record.teamB.players = record.teamB.players.map(p => {
+                    if (p === fromName) { replacedCount++; return toName; }
+                    return p;
+                });
+                record.teamB.name = record.teamB.players.join(' / ');
+            }
+            // Replace in errors
+            if (record.errors) {
+                record.errors.forEach(err => {
+                    if (err.playerName === fromName) err.playerName = toName;
+                });
+            }
+        });
+
+        localStorage.setItem(historyKey, JSON.stringify(records));
+
+        // 2. Delete the incorrect member
+        const members = this.memberManager.getMembers();
+        const fromMember = members.find(m => m.name === fromName);
+        if (fromMember) {
+            this.memberManager.deleteMember(fromMember.id);
+        }
+
+        // 3. Sync updated history to Firebase
+        records.forEach(record => {
+            this.sync.saveMatch(record);
+        });
+
+        // 4. Close modal, refresh UI
+        document.getElementById('merge-modal')?.classList.add('hidden');
+        this.memberManager.onEventChanged();
+        this.memberManager.renderMembersPage();
+        this.populateMemberPickers();
+
+        alert(`Done! Replaced "${fromName}" → "${toName}" in ${replacedCount} occurrences across match history. "${fromName}" has been removed from members.`);
+    }
+
     // ─── Navigation ─────────────────────────────────────────────────────────
 
     showSection(sectionId) {
@@ -1931,6 +2023,13 @@ class TennisScoreSheet {
                 this.memberManager.renderMembersPage();
                 this.populateMemberPickers();
             } catch (err) { alert(err.message); }
+        });
+
+        // Merge members
+        document.getElementById('btn-merge-members')?.addEventListener('click', () => this.showMergeModal());
+        document.getElementById('btn-confirm-merge')?.addEventListener('click', () => this.executeMerge());
+        document.getElementById('btn-cancel-merge')?.addEventListener('click', () => {
+            document.getElementById('merge-modal')?.classList.add('hidden');
         });
 
         // QR Code modal

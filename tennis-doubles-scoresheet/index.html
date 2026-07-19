@@ -321,8 +321,27 @@
                 <div class="member-add-form">
                     <input type="text" id="member-name-input" placeholder="New member name..." class="filter-input">
                     <button class="btn btn-primary btn-sm" id="btn-add-member">+ Add</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-merge-members">🔀 Merge</button>
                 </div>
                 <div id="members-list" class="members-list"></div>
+
+                <!-- Merge Players Modal -->
+                <div id="merge-modal" class="merge-modal hidden">
+                    <div class="merge-modal-content">
+                        <h3>🔀 Merge Players</h3>
+                        <p class="merge-hint">Select the incorrect name to replace, and the correct name to keep. All match history will be updated.</p>
+                        <label>Incorrect name (to remove):
+                            <select id="merge-from" class="filter-input"></select>
+                        </label>
+                        <label>Correct name (to keep):
+                            <select id="merge-to" class="filter-input"></select>
+                        </label>
+                        <div class="merge-actions">
+                            <button class="btn btn-primary btn-sm" id="btn-confirm-merge">Merge & Replace</button>
+                            <button class="btn btn-secondary btn-sm" id="btn-cancel-merge">Cancel</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
     </div>
