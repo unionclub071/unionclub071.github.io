@@ -1488,3 +1488,12 @@ select:focus, input:focus {
 .btn-point-team:active {
   transform: scale(0.93);
 }
+
+
+/* --- Disabled Action Buttons (Ace/DF for non-server) --- */
+.action-btn.btn-disabled,
+.action-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+  cursor: not-allowed;
+}

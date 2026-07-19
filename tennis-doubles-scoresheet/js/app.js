@@ -626,6 +626,7 @@ class TennisScoreSheet {
 
         // Push state snapshot BEFORE scoring
         const snapshot = this.engine.getState();
+        const serverTeamBeforeScore = this.engine.getServer().team;
         this.history.push({
             type: 'point',
             team: team,
@@ -659,7 +660,7 @@ class TennisScoreSheet {
         }
 
         // Announce score for plain +Point (no player action to announce)
-        this.announceScore(team);
+        this.announceScore(team, serverTeamBeforeScore);
 
         this.updateDisplay();
         this.saveActiveMatch();
@@ -812,6 +813,8 @@ class TennisScoreSheet {
 
     announceFault(team, playerName, errorTypeLabel) {
         if (!('speechSynthesis' in window)) return;
+        // Capture server team NOW before any state changes from the callback delay
+        const serverTeam = this.engine?.getServer()?.team || 'A';
         window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance(`${playerName}, ${errorTypeLabel}`);
         msg.rate = 1.0;
@@ -819,7 +822,7 @@ class TennisScoreSheet {
         msg.lang = 'en-US';
         // After fault announcement, announce score if enabled
         msg.onend = () => {
-            setTimeout(() => this.announceScore(null), 300);
+            setTimeout(() => this.announceScore(null, serverTeam), 300);
         };
         window.speechSynthesis.speak(msg);
     }
@@ -836,15 +839,43 @@ class TennisScoreSheet {
         }
     }
 
-    announceScore(team) {
+    announceScore(team, serverTeamOverride) {
         if (!this.scoreVoiceEnabled) return;
         if (!('speechSynthesis' in window)) return;
         
         const points = this.engine.getCurrentPointScore();
-        const server = this.engine.getServer();
-        const serverTeam = server.team;
+        // Use override if provided (captures server before game transitions)
+        const serverTeam = serverTeamOverride || this.engine.getServer().team;
         
-        // Server's score goes first, with a pause between
+        // If points are 0-0, a game was just won — announce who won the game instead
+        if (!points.isTiebreak && !points.isDeuce && !points.advantageTeam 
+            && points.teamA === '0' && points.teamB === '0') {
+            // Game was won — announce game winner
+            const currentSet = this.engine.getCurrentSet();
+            const winnerTeam = team || serverTeam;
+            const winnerName = winnerTeam === 'A' ? this.match.teamA.name : this.match.teamB.name;
+            
+            // Check if a set was also won (setsWon changed)
+            const setScore = `${this.engine.setsWon.A} - ${this.engine.setsWon.B}`;
+            const gameScore = `${currentSet.gamesA} - ${currentSet.gamesB}`;
+            
+            let text;
+            if (currentSet.gamesA === 0 && currentSet.gamesB === 0 && (this.engine.setsWon.A + this.engine.setsWon.B > 0)) {
+                // New set just started — previous set was won
+                text = `Game and Set, ${winnerName}. Sets: ${setScore}`;
+            } else {
+                text = `Game, ${winnerName}. Games: ${gameScore}`;
+            }
+            
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.rate = 0.9;
+            msg.volume = 0.8;
+            msg.lang = 'en-US';
+            window.speechSynthesis.speak(msg);
+            return;
+        }
+        
+        // Normal score announcement — server's score first
         let scoreText;
         if (points.isDeuce) {
             scoreText = 'Deuce';
@@ -872,6 +903,8 @@ class TennisScoreSheet {
     // Announce player action (always voiced, not controlled by toggle)
     announceAction(playerName, actionLabel) {
         if (!('speechSynthesis' in window)) return;
+        // Capture server team NOW before any state changes from the callback delay
+        const serverTeam = this.engine?.getServer()?.team || 'A';
         window.speechSynthesis.cancel();
         const msg = new SpeechSynthesisUtterance(`${playerName}, ${actionLabel}`);
         msg.rate = 1.0;
@@ -879,7 +912,7 @@ class TennisScoreSheet {
         msg.lang = 'en-US';
         // After action announcement, announce score if enabled
         msg.onend = () => {
-            setTimeout(() => this.announceScore(null), 300);
+            setTimeout(() => this.announceScore(null, serverTeam), 300);
         };
         window.speechSynthesis.speak(msg);
     }
@@ -1145,6 +1178,16 @@ class TennisScoreSheet {
             : this.match.teamB.players[server.playerIndex];
         const el = document.getElementById('server-name');
         if (el) el.textContent = name;
+
+        // Enable/disable Ace and Double Fault buttons based on who is serving
+        // Only the serving player should have Ace and DF enabled
+        document.querySelectorAll('.action-btn[data-action="ace"], .action-btn[data-action="double-fault"]').forEach(btn => {
+            const btnTeam = btn.dataset.team;
+            const btnPlayer = parseInt(btn.dataset.player);
+            const isServer = (btnTeam === server.team && btnPlayer === server.playerIndex);
+            btn.disabled = !isServer;
+            btn.classList.toggle('btn-disabled', !isServer);
+        });
     }
 
     switchService() {
