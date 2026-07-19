@@ -1168,3 +1168,305 @@ select:focus, input:focus {
   color: var(--text-muted);
   margin-bottom: 16px;
 }
+
+
+/* ============================================
+   New Scoreboard Layout Styles
+   ============================================ */
+
+/* --- Score Info Bar (top bar) --- */
+.score-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  font-size: 0.75rem;
+  background: var(--bg-card);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.service-info { color: var(--accent); font-weight: 600; }
+.set-game-info { color: var(--text-secondary); }
+.sets-info { color: var(--text-primary); font-weight: 600; }
+
+/* Voice toggle button in info bar */
+.btn-voice-toggle {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.btn-voice-toggle.voice-on { background: var(--accent); color: #1a1a2e; }
+
+/* --- Team Scoring Sections --- */
+.team-scoring-section {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px;
+  background: var(--bg-secondary);
+}
+
+.team-a-section { border-left: 3px solid var(--accent); }
+.team-b-section { border-left: 3px solid #60a5fa; }
+
+.team-score-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.team-name {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.team-points {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--score-bg);
+  padding: 2px 12px;
+  border-radius: 6px;
+  min-width: 50px;
+  text-align: center;
+}
+
+/* Player Scoring Block */
+.player-scoring-block {
+  margin-bottom: 6px;
+  padding: 6px;
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+
+.player-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.player-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.player-header .btn-point-player {
+  padding: 4px 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #1a1a2e;
+  border: none;
+  cursor: pointer;
+}
+
+/* Action buttons row - full width */
+.player-actions-row {
+  display: flex;
+  gap: 4px;
+  width: 100%;
+}
+
+.action-group, .action-group-neutral {
+  display: flex;
+  gap: 3px;
+  flex: 1;
+}
+
+.action-group-neutral {
+  flex: 0 0 auto;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 6px 2px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: center;
+  white-space: nowrap;
+  transition: transform 0.1s;
+}
+
+.action-btn:active { transform: scale(0.92); }
+
+.action-positive {
+  background: #166534;
+  color: #bbf7d0;
+}
+.action-positive:hover { background: #15803d; }
+
+.action-negative {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+.action-negative:hover { background: #991b1b; }
+
+.action-neutral {
+  background: #92400e;
+  color: #fef3c7;
+}
+.action-neutral:hover { background: #a16207; }
+
+/* Service Switch Section */
+.service-switch-section {
+  text-align: center;
+  padding: 6px 0;
+}
+
+.btn-service-switch {
+  padding: 8px 16px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.btn-service-switch:hover { border-color: var(--accent); }
+
+/* Tiebreak indicator */
+.tiebreak-indicator {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fbbf24;
+  padding: 4px;
+}
+
+/* Light theme overrides for action buttons */
+[data-theme="light"] .action-positive { background: #dcfce7; color: #166534; }
+[data-theme="light"] .action-negative { background: #fee2e2; color: #7f1d1d; }
+[data-theme="light"] .action-neutral { background: #fef3c7; color: #92400e; }
+
+/* --- +Point Button per Player (standalone) --- */
+.btn-point-player {
+  padding: 5px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #1a1a2e;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-point-player:hover {
+  background: var(--accent-hover);
+}
+
+.btn-point-player:active {
+  transform: scale(0.93);
+}
+
+/* --- Service Switch Modal/Selector --- */
+.service-selector-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 600;
+  padding: 16px;
+}
+
+.service-selector-content {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 20px;
+  max-width: 300px;
+  width: 100%;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px var(--shadow);
+}
+
+.service-selector-content h3 {
+  font-size: 1rem;
+  margin-bottom: 12px;
+  text-align: center;
+  color: var(--text-primary);
+}
+
+.service-selector-content .player-option {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.service-selector-content .player-option:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.service-selector-content .btn-cancel-service {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  border: none;
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* --- Score Flash Animation --- */
+.score-flash {
+  animation: scorePop 0.3s ease-out;
+}
+
+/* --- Sticky Header adjustment --- */
+.sticky-header {
+  position: sticky;
+  top: 48px;
+  z-index: 100;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 2px 8px var(--shadow);
+}
+
+/* --- Responsive for very small screens --- */
+@media (max-width: 360px) {
+  .action-btn {
+    font-size: 0.55rem;
+    padding: 5px 1px;
+  }
+
+  .team-score-header .team-points,
+  .team-points {
+    font-size: 1.3rem;
+    padding: 2px 8px;
+  }
+
+  .btn-point-player {
+    padding: 4px 8px;
+    font-size: 0.65rem;
+  }
+}

@@ -287,6 +287,12 @@ class TennisScoreSheet {
         this.audioCtx = null;
         this.recognition = null;
         this.isListening = false;
+        this.voiceEnabled = true;
+        this.voiceOverEnabled = true;
+
+        // Service tracking per team (alternates 0↔1 each time service returns)
+        this.teamAServerIndex = 0;
+        this.teamBServerIndex = 0;
 
         // Initialize managers
         this.eventManager = new EventManager(this);
@@ -798,11 +804,264 @@ class TennisScoreSheet {
     }
 
     announceFault(team, playerName, errorTypeLabel) {
+        if (!this.voiceEnabled) return;
         if (!('speechSynthesis' in window)) return;
         const msg = new SpeechSynthesisUtterance(`${playerName}, ${errorTypeLabel}`);
         msg.rate = 1.2;
         msg.volume = 0.7;
         window.speechSynthesis.speak(msg);
+    }
+
+    // ─── Voice-Over Toggle ──────────────────────────────────────────────────
+
+    toggleVoiceOver() {
+        this.voiceEnabled = !this.voiceEnabled;
+        const btn = document.getElementById('btn-voice-toggle');
+        if (btn) {
+            btn.textContent = this.voiceEnabled ? '🔊' : '🔇';
+            btn.classList.toggle('voice-off', !this.voiceEnabled);
+        }
+    }
+
+    announceScore(team) {
+        if (!this.voiceEnabled) return;
+        if (!('speechSynthesis' in window)) return;
+        
+        const points = this.engine.getCurrentPointScore();
+        const server = this.engine.getServer();
+        const serverTeam = server.team;
+        
+        // Server's score goes first, with a pause between
+        let scoreText;
+        if (points.isDeuce) {
+            scoreText = 'Deuce';
+        } else if (points.advantageTeam) {
+            const advPlayerName = points.advantageTeam === 'A' 
+                ? this.match.teamA.name : this.match.teamB.name;
+            scoreText = `Advantage ${advPlayerName}`;
+        } else if (points.isTiebreak) {
+            const serverScore = serverTeam === 'A' ? points.teamA : points.teamB;
+            const receiverScore = serverTeam === 'A' ? points.teamB : points.teamA;
+            scoreText = `${serverScore} .... ${receiverScore}`;
+        } else {
+            const serverScore = serverTeam === 'A' ? points.teamA : points.teamB;
+            const receiverScore = serverTeam === 'A' ? points.teamB : points.teamA;
+            scoreText = `${serverScore} .... ${receiverScore}`;
+        }
+        
+        const msg = new SpeechSynthesisUtterance(scoreText);
+        msg.rate = 0.9;
+        msg.volume = 0.8;
+        msg.lang = 'en-US';
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(msg);
+    }
+
+    // ─── Record Action (new scoring logic) ──────────────────────────────────
+
+    recordAction(team, playerIndex, actionType) {
+        if (!this.match || !this.engine || this.engine.isFinished) return;
+
+        const playerName = team === 'A'
+            ? this.match.teamA.players[playerIndex]
+            : this.match.teamB.players[playerIndex];
+
+        const positiveActions = ['ace', 'net-winner', 'winner'];
+        const negativeActions = ['double-fault', 'out', 'unforced-error'];
+        const neutralActions = ['let'];
+
+        const actionLabels = {
+            'ace': 'Ace', 'net-winner': 'Net Winner', 'winner': 'Winner',
+            'double-fault': 'Double Fault', 'out': 'Out',
+            'unforced-error': 'Unforced Error', 'let': 'Let'
+        };
+
+        const label = actionLabels[actionType] || actionType;
+        const oppositeTeam = team === 'A' ? 'B' : 'A';
+
+        // Record in errors array for match summary
+        const currentSet = this.engine.getCurrentSet();
+        const pointScore = this.engine.getCurrentPointScore();
+        const actionRecord = {
+            id: `act_${Date.now()}`,
+            team, playerIndex, playerName,
+            errorType: actionType,
+            errorTypeLabel: label,
+            setIndex: this.engine.currentSetIndex,
+            gameScore: `${currentSet.gamesA}-${currentSet.gamesB}`,
+            pointScore: `${pointScore.teamA}-${pointScore.teamB}`,
+            timestamp: new Date().toISOString()
+        };
+        this.match.errors.push(actionRecord);
+
+        // Push state snapshot BEFORE scoring for undo
+        const snapshot = this.engine.getState();
+
+        if (positiveActions.includes(actionType)) {
+            // Positive: award point to player's team
+            this.history.push({
+                type: 'action',
+                team: team,
+                description: `${playerName}: ${label} → +1 Team ${team}`,
+                stateSnapshot: snapshot,
+                errorId: actionRecord.id,
+                timestamp: new Date().toISOString()
+            });
+
+            const result = this.engine.scorePoint(team);
+            this.playScoreSound();
+            this.announceScore(team);
+
+            if (result.transition === 'GAME_WON') this.checkSideChange();
+            else if (result.transition === 'MATCH_WON') { this.playWinSound(); this.endMatch(); return; }
+            else if (result.transition === 'TIEBREAK_START') {
+                const ti = document.getElementById('tiebreak-indicator');
+                if (ti) ti.classList.remove('hidden');
+            }
+
+            // Animate score
+            const scoreEl = document.getElementById(team === 'A' ? 'scoreA' : 'scoreB');
+            if (scoreEl) {
+                scoreEl.classList.add('score-flash');
+                setTimeout(() => scoreEl.classList.remove('score-flash'), 300);
+            }
+
+        } else if (negativeActions.includes(actionType)) {
+            // Negative: award point to OPPONENT team
+            this.history.push({
+                type: 'action',
+                team: team,
+                description: `${playerName}: ${label} → +1 Team ${oppositeTeam}`,
+                stateSnapshot: snapshot,
+                errorId: actionRecord.id,
+                timestamp: new Date().toISOString()
+            });
+
+            const result = this.engine.scorePoint(oppositeTeam);
+            this.playErrorSound();
+            this.announceFault(team, playerName, label);
+
+            if (result.transition === 'GAME_WON') this.checkSideChange();
+            else if (result.transition === 'MATCH_WON') { this.playWinSound(); this.endMatch(); return; }
+            else if (result.transition === 'TIEBREAK_START') {
+                const ti = document.getElementById('tiebreak-indicator');
+                if (ti) ti.classList.remove('hidden');
+            }
+
+            // Animate opponent score
+            const scoreEl = document.getElementById(oppositeTeam === 'A' ? 'scoreA' : 'scoreB');
+            if (scoreEl) {
+                scoreEl.classList.add('score-flash');
+                setTimeout(() => scoreEl.classList.remove('score-flash'), 300);
+            }
+
+        } else if (neutralActions.includes(actionType)) {
+            // Neutral: just record, no score change
+            this.history.push({
+                type: 'action',
+                team: team,
+                description: `${playerName}: ${label} (no score change)`,
+                stateSnapshot: snapshot,
+                errorId: actionRecord.id,
+                timestamp: new Date().toISOString()
+            });
+
+            // Show brief "Let!" notification
+            const ti = document.getElementById('side-change-notification');
+            if (ti) {
+                ti.innerHTML = '<span>🔄 Let!</span>';
+                ti.classList.remove('hidden');
+                setTimeout(() => ti.classList.add('hidden'), 2000);
+            }
+        }
+
+        this.updateDisplay();
+        this.saveActiveMatch();
+    }
+
+    // ─── Service Switching ──────────────────────────────────────────────────
+
+    showServiceSelector() {
+        if (!this.match || !this.engine) return;
+
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'service-selector-overlay';
+        overlay.id = 'service-selector-overlay';
+
+        const content = document.createElement('div');
+        content.className = 'service-selector-content';
+        content.innerHTML = `<h3>🎾 Select Server</h3>`;
+
+        const players = [
+            { name: this.match.teamA.players[0], team: 'A', index: 0 },
+            { name: this.match.teamA.players[1], team: 'A', index: 1 },
+            { name: this.match.teamB.players[0], team: 'B', index: 0 },
+            { name: this.match.teamB.players[1], team: 'B', index: 1 }
+        ];
+
+        players.forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'player-option';
+            btn.textContent = `${p.name} (Team ${p.team})`;
+            btn.addEventListener('click', () => {
+                this.switchServiceTo(p.team, p.index);
+                overlay.remove();
+            });
+            content.appendChild(btn);
+        });
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'btn-cancel-service';
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.addEventListener('click', () => overlay.remove());
+        content.appendChild(cancelBtn);
+
+        overlay.appendChild(content);
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+
+        document.body.appendChild(overlay);
+    }
+
+    switchServiceTo(team, playerIndex) {
+        if (!this.engine || !this.match) return;
+
+        // Determine current server's team
+        const currentServer = this.engine.getServer();
+        const currentTeam = currentServer.team;
+
+        // If switching to the other team, auto-alternate within that team
+        if (team !== currentTeam) {
+            if (team === 'A') {
+                // Service going to Team A — use the alternating index
+                playerIndex = this.teamAServerIndex;
+                // Alternate for next time service returns to Team A
+                this.teamAServerIndex = this.teamAServerIndex === 0 ? 1 : 0;
+            } else {
+                // Service going to Team B
+                playerIndex = this.teamBServerIndex;
+                this.teamBServerIndex = this.teamBServerIndex === 0 ? 1 : 0;
+            }
+        }
+
+        // Map team+playerIndex to serviceOrder position
+        // Service order mapping: 0=A[0], 1=B[0], 2=A[1], 3=B[1]
+        let targetMapping;
+        if (team === 'A' && playerIndex === 0) targetMapping = 0;
+        else if (team === 'B' && playerIndex === 0) targetMapping = 1;
+        else if (team === 'A' && playerIndex === 1) targetMapping = 2;
+        else targetMapping = 3; // B, 1
+
+        // Find the index in serviceOrder that matches this target
+        const orderIdx = this.engine.serviceOrder.indexOf(targetMapping);
+        if (orderIdx !== -1) {
+            this.engine.serviceIndex = orderIdx;
+        }
+
+        this.updateServiceDisplay();
+        this.saveActiveMatch();
     }
 
     // ─── Side Change (Task 8.6) ─────────────────────────────────────────────
@@ -1463,6 +1722,30 @@ class TennisScoreSheet {
         document.getElementById('btn-close-qr')?.addEventListener('click', () => this.hideQRCode());
         document.getElementById('qr-modal')?.addEventListener('click', (e) => {
             if (e.target.id === 'qr-modal') this.hideQRCode();
+        });
+
+        // Voice Over Toggle
+        document.getElementById('btn-voice-toggle')?.addEventListener('click', () => this.toggleVoiceOver());
+
+        // Service Switch
+        document.getElementById('btn-service-switch')?.addEventListener('click', () => this.showServiceSelector());
+
+        // Action buttons (positive/negative/neutral per player)
+        document.querySelectorAll('.action-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const team = btn.dataset.team;
+                const playerIndex = parseInt(btn.dataset.player);
+                const actionType = btn.dataset.action;
+                this.recordAction(team, playerIndex, actionType);
+            });
+        });
+
+        // +Point buttons under each player
+        document.querySelectorAll('.btn-point-player').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const team = btn.dataset.team;
+                this.addPoint(team);
+            });
         });
 
         // Summary actions
