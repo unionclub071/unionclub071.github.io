@@ -178,40 +178,66 @@ class FirebaseSync {
                 console.log('[FirebaseSync] 📋 Firebase events:', firebaseEvents.map(e => `${e.name} (${e.id})`));
                 const localEvents = this.app?.eventManager?.getEvents() || [];
                 console.log('[FirebaseSync] 📋 Local events:', localEvents.map(e => `${e.name} (${e.id})`));
-                const localIds = new Set(localEvents.map(e => e.id));
                 
-                let changed = false;
-                
-                // Add Firebase events not in local
-                for (const fbEvent of firebaseEvents) {
-                    if (!localIds.has(fbEvent.id)) {
-                        localEvents.push(fbEvent);
-                        changed = true;
+                if (firebaseEvents.length > 0) {
+                    // Check if local has any of the Firebase event IDs
+                    const localIds = new Set(localEvents.map(e => e.id));
+                    const firebaseIds = new Set(firebaseEvents.map(e => e.id));
+                    const hasOverlap = localEvents.some(e => firebaseIds.has(e.id));
+                    
+                    if (!hasOverlap) {
+                        // No overlap — this is a fresh device. Replace local events with Firebase events.
+                        console.log('[FirebaseSync] 🔄 Fresh device detected. Replacing local events with Firebase events.');
+                        localStorage.setItem('tennis-events', JSON.stringify(firebaseEvents));
+                        // Set active event to the first Firebase event (or default)
+                        const defaultFb = firebaseEvents.find(e => e.isDefault) || firebaseEvents[0];
+                        localStorage.setItem('tennis-selected-event', defaultFb.id);
+                        // Remove the orphan local default event's data
+                        for (const le of localEvents) {
+                            if (!firebaseIds.has(le.id)) {
+                                localStorage.removeItem(`tennis-members-${le.id}`);
+                                localStorage.removeItem(`tennis-match-history-${le.id}`);
+                                localStorage.removeItem(`tennis-active-match-${le.id}`);
+                            }
+                        }
+                        // Reinitialize EventManager with Firebase events
+                        this.app?.eventManager?.init();
+                        this.app?.renderEventSelectors?.();
+                        console.log('[FirebaseSync] ✅ Switched to Firebase events. Active:', defaultFb.name);
+                    } else {
+                        // Has overlap — merge any missing Firebase events into local
+                        let changed = false;
+                        for (const fbEvent of firebaseEvents) {
+                            if (!localIds.has(fbEvent.id)) {
+                                localEvents.push(fbEvent);
+                                changed = true;
+                            }
+                        }
+                        if (changed) {
+                            localStorage.setItem('tennis-events', JSON.stringify(localEvents));
+                            this.app?.eventManager?.init();
+                            this.app?.renderEventSelectors?.();
+                            console.log('[FirebaseSync] ✅ Merged new events from Firebase');
+                        } else {
+                            console.log('[FirebaseSync] ℹ️ Events already in sync');
+                        }
                     }
                 }
-                
-                if (changed) {
-                    localStorage.setItem('tennis-events', JSON.stringify(localEvents));
-                    this.app?.eventManager?.init(); // Reinitialize to pick up new events
-                    this.app?.renderEventSelectors?.();
-                    console.log('[FirebaseSync] ✅ Synced events from Firebase');
-                } else {
-                    console.log('[FirebaseSync] ℹ️ Events already in sync');
-                }
             } else {
-                console.log('[FirebaseSync] ⚠️ No events doc found in Firebase (first device or appConfig not created yet)');
+                console.log('[FirebaseSync] ⚠️ No events doc in Firebase. Uploading local events...');
             }
             
-            // Upload local events to Firebase (ensures first device's events are shared)
-            const localEvents = this.app?.eventManager?.getEvents() || [];
-            if (localEvents.length > 0) {
+            // Always upload current local events to Firebase
+            const currentLocalEvents = this.app?.eventManager?.getEvents() || [];
+            if (currentLocalEvents.length > 0) {
                 await this.db.collection('appConfig').doc('events').set({
-                    list: localEvents,
+                    list: currentLocalEvents,
                     lastModified: Date.now()
-                }, { merge: true });
+                });
+                console.log('[FirebaseSync] 📤 Uploaded events to Firebase');
             }
         } catch (e) {
-            console.warn('[FirebaseSync] Events sync failed:', e);
+            console.warn('[FirebaseSync] ❌ Events sync failed:', e);
         }
     }
 

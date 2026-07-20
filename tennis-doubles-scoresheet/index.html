@@ -364,8 +364,29 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('Service Worker registered:', reg.scope))
+                    .then(reg => {
+                        console.log('Service Worker registered:', reg.scope);
+                        // Check for updates immediately and every 60 seconds
+                        reg.update();
+                        setInterval(() => reg.update(), 60000);
+                        // When a new SW is found, notify user to refresh
+                        reg.addEventListener('updatefound', () => {
+                            const newWorker = reg.installing;
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'activated') {
+                                    // New version available — auto reload
+                                    if (confirm('New version available! Reload now?')) {
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
                     .catch(err => console.log('Service Worker registration failed:', err));
+            });
+            // Listen for controller change (new SW took over)
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                window.location.reload();
             });
         }
     </script>

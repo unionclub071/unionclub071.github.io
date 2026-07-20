@@ -1,5 +1,5 @@
 // Service Worker for Tennis Doubles Scoresheet PWA
-const CACHE_NAME = 'tennis-v4';
+const CACHE_NAME = 'tennis-v5';
 
 // Application assets to pre-cache during install
 const ASSETS_TO_CACHE = [
