@@ -8,9 +8,9 @@
  * 
  * Firestore path structure:
  *   events/{eventId}/matches/{matchId}        - Completed match records
- *   events/{eventId}/playerRegistry/data      - Member list (player names)
  *   events/{eventId}/members/{memberId}       - Individual member documents
  *   events/{eventId}/appData/activeMatch      - Active match state for sharing
+ *   appConfig/events                          - Shared events list across devices
  * 
  * Requirements: 19.1, 19.2, 19.3, 19.4, 19.6, 19.7
  */
@@ -47,16 +47,19 @@ class FirebaseSync {
         try {
             // Only initialize if Firebase SDK is available
             if (typeof firebase !== 'undefined' && firebaseConfig.apiKey) {
+                console.log('[FirebaseSync] 🟢 Firebase SDK detected, initializing...');
                 if (!firebase.apps.length) {
                     firebase.initializeApp(firebaseConfig);
                 }
                 this.db = firebase.firestore();
                 this.isOnline = true;
+                console.log('[FirebaseSync] 🟢 Firestore connected. Project:', firebaseConfig.projectId);
                 this._updateSyncStatus(true);
                 this._startConnectivityMonitor();
                 // Load data from Firebase on init
                 this._loadFromFirebase();
             } else {
+                console.warn('[FirebaseSync] 🔴 Firebase SDK not loaded or config missing. Running offline only.');
                 this._updateSyncStatus(false);
             }
         } catch (e) {
@@ -72,22 +75,29 @@ class FirebaseSync {
      * and merge into localStorage so other sessions see shared data.
      */
     async _loadFromFirebase() {
-        if (!this.db) return;
+        if (!this.db) { console.warn('[FirebaseSync] 🔴 _loadFromFirebase: no db'); return; }
 
         try {
             // 1. First sync events list so all devices share the same event IDs
+            console.log('[FirebaseSync] 📥 Loading data from Firebase...');
             await this._syncEventsFromFirebase();
 
             const eventId = this._getEventId();
-            if (!eventId) return;
+            if (!eventId) { console.warn('[FirebaseSync] 🔴 No active event ID found'); return; }
+            console.log('[FirebaseSync] 📋 Active event ID:', eventId);
 
             // 2. Load members from Firebase and merge with local
+            console.log('[FirebaseSync] 📥 Fetching members from: events/' + eventId + '/members');
             const membersSnapshot = await this.db.collection('events').doc(eventId)
                 .collection('members').get();
             
+            console.log('[FirebaseSync] 📋 Firebase members found:', membersSnapshot.size);
+            
             if (!membersSnapshot.empty) {
                 const firebaseMembers = membersSnapshot.docs.map(doc => doc.data());
+                console.log('[FirebaseSync] 📋 Firebase member names:', firebaseMembers.map(m => m.name));
                 const localMembers = this.app?.memberManager?.getMembers() || [];
+                console.log('[FirebaseSync] 📋 Local members:', localMembers.map(m => m.name));
                 
                 const localNames = new Set(localMembers.map(m => m.name.toLowerCase()));
                 let added = 0;
@@ -111,6 +121,8 @@ class FirebaseSync {
                     this.app?.populateMemberPickers?.();
                     console.log(`[FirebaseSync] Synced ${added} members from Firebase`);
                 }
+            } else {
+                console.log('[FirebaseSync] ⚠️ No members found in Firebase for this event');
             }
 
             // 3. Load match history from Firebase and merge with local
@@ -158,11 +170,14 @@ class FirebaseSync {
 
         try {
             // Download events from Firebase
+            console.log('[FirebaseSync] 📥 Fetching events from: appConfig/events');
             const eventsDoc = await this.db.collection('appConfig').doc('events').get();
             
             if (eventsDoc.exists) {
                 const firebaseEvents = eventsDoc.data().list || [];
+                console.log('[FirebaseSync] 📋 Firebase events:', firebaseEvents.map(e => `${e.name} (${e.id})`));
                 const localEvents = this.app?.eventManager?.getEvents() || [];
+                console.log('[FirebaseSync] 📋 Local events:', localEvents.map(e => `${e.name} (${e.id})`));
                 const localIds = new Set(localEvents.map(e => e.id));
                 
                 let changed = false;
@@ -179,8 +194,12 @@ class FirebaseSync {
                     localStorage.setItem('tennis-events', JSON.stringify(localEvents));
                     this.app?.eventManager?.init(); // Reinitialize to pick up new events
                     this.app?.renderEventSelectors?.();
-                    console.log('[FirebaseSync] Synced events from Firebase');
+                    console.log('[FirebaseSync] ✅ Synced events from Firebase');
+                } else {
+                    console.log('[FirebaseSync] ℹ️ Events already in sync');
                 }
+            } else {
+                console.log('[FirebaseSync] ⚠️ No events doc found in Firebase (first device or appConfig not created yet)');
             }
             
             // Upload local events to Firebase (ensures first device's events are shared)
@@ -259,32 +278,6 @@ class FirebaseSync {
         }
     }
 
-    // ─── Save Player Registry (Requirement 19.3) ──────────────────────────────
-
-    /**
-     * Sync the player names (member list) to Firebase for the active event.
-     * Path: events/{eventId}/playerRegistry/data
-     * @param {string[]} names - Array of player name strings
-     */
-    async savePlayerRegistry(names) {
-        if (!this.db) return;
-        const eventId = this._getEventId();
-        if (!eventId) return;
-
-        try {
-            this._updateSyncStatus(true, 'syncing');
-            await this.db.collection('events').doc(eventId)
-                .collection('playerRegistry').doc('data').set({
-                    names: names,
-                    lastModified: Date.now()
-                });
-            this._updateSyncStatus(true);
-        } catch (e) {
-            console.error('[FirebaseSync] Failed to save player registry:', e);
-            this._updateSyncStatus(false);
-        }
-    }
-
     // ─── Save Individual Member ───────────────────────────────────────────────
 
     /**
@@ -294,17 +287,19 @@ class FirebaseSync {
      * @param {object} member - Member object with id and name
      */
     async saveMember(eventId, member) {
-        if (!this.db) return;
-        if (!eventId || !member) return;
+        if (!this.db) { console.warn('[FirebaseSync] 🔴 saveMember: no db connection'); return; }
+        if (!eventId || !member) { console.warn('[FirebaseSync] 🔴 saveMember: missing eventId or member'); return; }
 
         try {
+            console.log(`[FirebaseSync] 📤 Saving member "${member.name}" to events/${eventId}/members/${member.id}`);
             await this.db.collection('events').doc(eventId)
                 .collection('members').doc(member.id).set({
                     ...member,
                     lastModified: Date.now()
                 });
+            console.log(`[FirebaseSync] ✅ Member "${member.name}" saved to Firebase`);
         } catch (e) {
-            console.error('[FirebaseSync] Failed to save member:', e);
+            console.error('[FirebaseSync] ❌ Failed to save member:', e);
         }
     }
 
@@ -415,7 +410,7 @@ class FirebaseSync {
             this._updateSyncStatus(true, 'syncing');
 
             // Delete subcollection documents (Firestore doesn't cascade-delete)
-            const subcollections = ['matches', 'playerRegistry', 'members', 'appData'];
+            const subcollections = ['matches', 'members', 'appData'];
             for (const sub of subcollections) {
                 const snapshot = await this.db.collection('events').doc(eventId)
                     .collection(sub).get();

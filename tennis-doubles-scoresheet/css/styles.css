@@ -1543,3 +1543,77 @@ select:focus, input:focus {
   gap: 8px;
   margin-top: 14px;
 }
+
+
+/* --- Performance Summary Styles --- */
+.positive-header {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.negative-header {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.positive-val {
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.negative-val {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.player-perf-block {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.player-perf-block:last-child {
+  border-bottom: none;
+}
+
+.perf-section {
+  font-size: 0.8rem;
+  padding: 3px 0 3px 10px;
+  color: var(--text-secondary);
+}
+
+.perf-label {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 0.75rem;
+}
+
+.positive-section {
+  color: var(--text-primary);
+}
+
+.negative-section {
+  color: var(--text-primary);
+}
+
+
+/* --- Clickable Sync Button --- */
+.sync-indicator {
+  cursor: pointer;
+  transition: opacity 0.2s;
+  border: none;
+  background: var(--bg-card);
+}
+
+.sync-indicator:active {
+  opacity: 0.6;
+  transform: scale(0.95);
+}
+
+.sync-syncing .sync-dot {
+  animation: syncPulse 0.8s infinite alternate;
+}
+
+@keyframes syncPulse {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}

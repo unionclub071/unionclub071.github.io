@@ -1220,6 +1220,9 @@ class TennisScoreSheet {
         if (!this.match) return;
         this.showSection('summary-section');
 
+        const positiveActions = ['ace', 'net-winner', 'winner'];
+        const negativeActions = ['double-fault', 'out', 'unforced-error'];
+
         const winner = this.match.winner;
         const winnerName = winner === 'A' ? this.match.teamA.name : (winner === 'B' ? this.match.teamB.name : 'No winner');
         const resultEl = document.getElementById('match-result');
@@ -1242,34 +1245,92 @@ class TennisScoreSheet {
             setResults.innerHTML = html;
         }
 
-        // Error summary
+        // Team Performance (positive vs negative totals)
         const errorSummary = document.getElementById('error-summary');
         if (errorSummary && this.match.errors) {
-            const errA = this.match.errors.filter(e => e.team === 'A').length;
-            const errB = this.match.errors.filter(e => e.team === 'B').length;
-            errorSummary.innerHTML = `<p>Team A: ${errA} errors | Team B: ${errB} errors</p>`;
+            const teamStats = { A: { positive: 0, negative: 0 }, B: { positive: 0, negative: 0 } };
+            this.match.errors.forEach(e => {
+                if (positiveActions.includes(e.errorType)) teamStats[e.team].positive++;
+                else if (negativeActions.includes(e.errorType)) teamStats[e.team].negative++;
+            });
+            errorSummary.innerHTML = `
+                <table class="summary-table">
+                    <tr><th>Team</th><th class="positive-header">Winners</th><th class="negative-header">Errors</th></tr>
+                    <tr><td>${this.match.teamA.name}</td><td class="positive-val">${teamStats.A.positive}</td><td class="negative-val">${teamStats.A.negative}</td></tr>
+                    <tr><td>${this.match.teamB.name}</td><td class="positive-val">${teamStats.B.positive}</td><td class="negative-val">${teamStats.B.negative}</td></tr>
+                </table>`;
         }
 
-        // Player errors
+        // Player Performance (per player, positive & negative breakdown)
         const playerErrors = document.getElementById('player-errors');
         if (playerErrors && this.match.errors) {
-            const counts = {};
+            const playerStats = {};
             this.match.errors.forEach(e => {
-                counts[e.playerName] = (counts[e.playerName] || 0) + 1;
+                if (!playerStats[e.playerName]) {
+                    playerStats[e.playerName] = { positive: {}, negative: {} };
+                }
+                if (positiveActions.includes(e.errorType)) {
+                    playerStats[e.playerName].positive[e.errorTypeLabel] = 
+                        (playerStats[e.playerName].positive[e.errorTypeLabel] || 0) + 1;
+                } else if (negativeActions.includes(e.errorType)) {
+                    playerStats[e.playerName].negative[e.errorTypeLabel] = 
+                        (playerStats[e.playerName].negative[e.errorTypeLabel] || 0) + 1;
+                }
             });
-            playerErrors.innerHTML = Object.entries(counts)
-                .map(([name, count]) => `<p>${name}: ${count}</p>`).join('');
+
+            let html = '';
+            Object.entries(playerStats).forEach(([name, stats]) => {
+                html += `<div class="player-perf-block"><strong>${name}</strong>`;
+                
+                // Positive
+                const posEntries = Object.entries(stats.positive);
+                if (posEntries.length > 0) {
+                    html += `<div class="perf-section positive-section"><span class="perf-label positive-header">✅ Winners:</span> `;
+                    html += posEntries.map(([type, count]) => `${type}: ${count}`).join(', ');
+                    html += `</div>`;
+                }
+                
+                // Negative
+                const negEntries = Object.entries(stats.negative);
+                if (negEntries.length > 0) {
+                    html += `<div class="perf-section negative-section"><span class="perf-label negative-header">❌ Errors:</span> `;
+                    html += negEntries.map(([type, count]) => `${type}: ${count}`).join(', ');
+                    html += `</div>`;
+                }
+                
+                if (posEntries.length === 0 && negEntries.length === 0) {
+                    html += `<div class="perf-section">No actions recorded</div>`;
+                }
+                html += `</div>`;
+            });
+            playerErrors.innerHTML = html || '<p>No player actions recorded.</p>';
         }
 
-        // Error types
+        // Action Breakdown (total counts by type, grouped positive/negative)
         const errorTypes = document.getElementById('error-types-summary');
         if (errorTypes && this.match.errors) {
-            const types = {};
+            const posTypes = {};
+            const negTypes = {};
             this.match.errors.forEach(e => {
-                types[e.errorTypeLabel] = (types[e.errorTypeLabel] || 0) + 1;
+                if (positiveActions.includes(e.errorType)) {
+                    posTypes[e.errorTypeLabel] = (posTypes[e.errorTypeLabel] || 0) + 1;
+                } else if (negativeActions.includes(e.errorType)) {
+                    negTypes[e.errorTypeLabel] = (negTypes[e.errorTypeLabel] || 0) + 1;
+                }
             });
-            errorTypes.innerHTML = Object.entries(types)
-                .map(([type, count]) => `<p>${type}: ${count}</p>`).join('');
+
+            let html = '';
+            if (Object.keys(posTypes).length > 0) {
+                html += `<div class="perf-section"><span class="perf-label positive-header">✅ Winners</span>`;
+                html += Object.entries(posTypes).map(([type, count]) => `<p>${type}: ${count}</p>`).join('');
+                html += `</div>`;
+            }
+            if (Object.keys(negTypes).length > 0) {
+                html += `<div class="perf-section"><span class="perf-label negative-header">❌ Errors</span>`;
+                html += Object.entries(negTypes).map(([type, count]) => `<p>${type}: ${count}</p>`).join('');
+                html += `</div>`;
+            }
+            errorTypes.innerHTML = html || '<p>No actions recorded.</p>';
         }
     }
 
@@ -1701,6 +1762,35 @@ class TennisScoreSheet {
         this._prevEventId = prevId;
     }
 
+    // ─── Manual Sync ────────────────────────────────────────────────────────
+
+    async manualSync() {
+        if (!this.sync || !this.sync.db) {
+            alert('Firebase not connected. Check your internet connection and reload.');
+            return;
+        }
+
+        const syncBtn = document.getElementById('sync-status');
+        const label = syncBtn?.querySelector('.sync-label');
+        if (label) label.textContent = 'Syncing…';
+        syncBtn?.classList.add('sync-syncing');
+
+        try {
+            await this.sync._loadFromFirebase();
+            // Refresh UI after sync
+            this.memberManager.onEventChanged();
+            this.populateMemberPickers();
+            this.renderEventSelectors();
+            if (label) label.textContent = 'Synced ✓';
+            syncBtn?.classList.remove('sync-syncing');
+            setTimeout(() => { if (label) label.textContent = 'Online'; }, 2000);
+        } catch (e) {
+            console.error('[ManualSync] Failed:', e);
+            if (label) label.textContent = 'Error';
+            setTimeout(() => { if (label) label.textContent = 'Online'; }, 3000);
+        }
+    }
+
     // ─── Event Management Integration ───────────────────────────────────────
 
     onEventChanged() {
@@ -1888,6 +1978,9 @@ class TennisScoreSheet {
 
         // Voice Over Toggle
         document.getElementById('btn-voice-toggle')?.addEventListener('click', () => this.toggleVoiceOver());
+
+        // Manual Sync
+        document.getElementById('sync-status')?.addEventListener('click', () => this.manualSync());
 
         // Service Switch
         document.getElementById('btn-service-switch')?.addEventListener('click', () => this.showServiceSelector());
