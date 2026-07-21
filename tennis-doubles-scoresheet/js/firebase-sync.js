@@ -227,18 +227,32 @@ class FirebaseSync {
                 console.log('[FirebaseSync] ⚠️ No events doc in Firebase. Uploading local events...');
             }
             
-            // Always upload current local events to Firebase
-            const currentLocalEvents = this.app?.eventManager?.getEvents() || [];
+            // Always upload current local events to Firebase (deduplicated)
+            const currentLocalEvents = this._deduplicateEvents(this.app?.eventManager?.getEvents() || []);
             if (currentLocalEvents.length > 0) {
                 await this.db.collection('appConfig').doc('events').set({
                     list: currentLocalEvents,
                     lastModified: Date.now()
                 });
-                console.log('[FirebaseSync] 📤 Uploaded events to Firebase');
+                console.log('[FirebaseSync] 📤 Uploaded events to Firebase (deduped):', currentLocalEvents.length);
             }
         } catch (e) {
             console.warn('[FirebaseSync] ❌ Events sync failed:', e);
         }
+    }
+
+    /**
+     * Remove duplicate events by ID. Keeps the first occurrence of each ID.
+     * @param {Array} events 
+     * @returns {Array} Deduplicated events
+     */
+    _deduplicateEvents(events) {
+        const seen = new Set();
+        return events.filter(e => {
+            if (seen.has(e.id)) return false;
+            seen.add(e.id);
+            return true;
+        });
     }
 
     /**
@@ -247,11 +261,14 @@ class FirebaseSync {
     async saveEvents() {
         if (!this.db) return;
         try {
-            const localEvents = this.app?.eventManager?.getEvents() || [];
+            const localEvents = this._deduplicateEvents(this.app?.eventManager?.getEvents() || []);
+            // Also save deduped list to localStorage
+            localStorage.setItem('tennis-events', JSON.stringify(localEvents));
             await this.db.collection('appConfig').doc('events').set({
                 list: localEvents,
                 lastModified: Date.now()
             });
+            console.log('[FirebaseSync] 📤 Events saved to Firebase (deduped):', localEvents.length);
         } catch (e) {
             console.warn('[FirebaseSync] Failed to save events to Firebase:', e);
         }

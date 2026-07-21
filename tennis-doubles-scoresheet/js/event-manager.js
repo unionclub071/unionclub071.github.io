@@ -45,6 +45,15 @@ class EventManager {
             this.events = [];
         }
 
+        // Deduplicate events by ID (in case of sync issues)
+        const seenIds = new Set();
+        this.events = this.events.filter(e => {
+            if (seenIds.has(e.id)) return false;
+            seenIds.add(e.id);
+            return true;
+        });
+        this._saveEvents();
+
         this.ensureDefaultEvent();
         this._initActiveEvent();
     }
@@ -103,9 +112,17 @@ class EventManager {
             throw new Error('Event name cannot be empty or whitespace-only.');
         }
 
+        const trimmedName = name.trim();
+
+        // Check for duplicate event name (case-insensitive)
+        const duplicate = this.events.find(e => e.name.toLowerCase() === trimmedName.toLowerCase());
+        if (duplicate) {
+            throw new Error(`Event "${trimmedName}" already exists.`);
+        }
+
         const event = {
             id: generateEventId(),
-            name: name.trim(),
+            name: trimmedName,
             createdDate: new Date().toISOString(),
             isDefault: false
         };
