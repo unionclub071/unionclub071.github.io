@@ -79,84 +79,102 @@ class FirebaseSync {
 
         try {
             // 1. First sync events list so all devices share the same event IDs
-            console.log('[FirebaseSync] 📥 Loading data from Firebase...');
+            console.log('[FirebaseSync] 📥 Syncing with Firebase...');
             await this._syncEventsFromFirebase();
 
             const eventId = this._getEventId();
             if (!eventId) { console.warn('[FirebaseSync] 🔴 No active event ID found'); return; }
             console.log('[FirebaseSync] 📋 Active event ID:', eventId);
 
-            // 2. Load members from Firebase and merge with local
-            console.log('[FirebaseSync] 📥 Fetching members from: events/' + eventId + '/members');
+            // ═══════════════════════════════════════════════════════════════
+            // OPTION 1: Upload local additions first, then Firebase = source of truth
+            // ═══════════════════════════════════════════════════════════════
+
+            // STEP A: Upload any local members that Firebase doesn't have yet
+            console.log('[FirebaseSync] 📤 Uploading local additions to Firebase...');
+            const localMembers = this.app?.memberManager?.getMembers() || [];
             const membersSnapshot = await this.db.collection('events').doc(eventId)
                 .collection('members').get();
+            const firebaseIds = new Set(membersSnapshot.docs.map(doc => doc.id));
             
-            console.log('[FirebaseSync] 📋 Firebase members found:', membersSnapshot.size);
-            
-            if (!membersSnapshot.empty) {
-                const firebaseMembers = membersSnapshot.docs.map(doc => doc.data());
-                console.log('[FirebaseSync] 📋 Firebase member names:', firebaseMembers.map(m => m.name));
-                const localMembers = this.app?.memberManager?.getMembers() || [];
-                console.log('[FirebaseSync] 📋 Local members:', localMembers.map(m => m.name));
-                
-                const localNames = new Set(localMembers.map(m => m.name.toLowerCase()));
-                let added = 0;
-                
-                for (const fbMember of firebaseMembers) {
-                    if (fbMember.name && !localNames.has(fbMember.name.toLowerCase())) {
-                        localMembers.push({
-                            id: fbMember.id || `mbr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                            name: fbMember.name,
-                            createdDate: fbMember.createdDate || new Date().toISOString()
+            let uploadedMembers = 0;
+            for (const lm of localMembers) {
+                if (!firebaseIds.has(lm.id)) {
+                    await this.db.collection('events').doc(eventId)
+                        .collection('members').doc(lm.id).set({
+                            ...lm,
+                            lastModified: Date.now()
                         });
-                        localNames.add(fbMember.name.toLowerCase());
-                        added++;
-                    }
+                    uploadedMembers++;
                 }
-                
-                if (added > 0) {
-                    const key = `tennis-members-${eventId}`;
-                    localStorage.setItem(key, JSON.stringify(localMembers));
-                    this.app?.memberManager?.onEventChanged();
-                    this.app?.populateMemberPickers?.();
-                    console.log(`[FirebaseSync] Synced ${added} members from Firebase`);
-                }
-            } else {
-                console.log('[FirebaseSync] ⚠️ No members found in Firebase for this event');
+            }
+            if (uploadedMembers > 0) {
+                console.log(`[FirebaseSync] 📤 Uploaded ${uploadedMembers} new local members to Firebase`);
             }
 
-            // 3. Load match history from Firebase and merge with local
+            // Upload any local matches that Firebase doesn't have yet
+            const historyKey = `tennis-match-history-${eventId}`;
+            let localMatches = [];
+            try { localMatches = JSON.parse(localStorage.getItem(historyKey)) || []; } catch (e) { localMatches = []; }
+            
             const matchesSnapshot = await this.db.collection('events').doc(eventId)
                 .collection('matches').get();
+            const firebaseMatchIds = new Set(matchesSnapshot.docs.map(doc => doc.id));
             
-            if (!matchesSnapshot.empty) {
-                const firebaseMatches = matchesSnapshot.docs.map(doc => doc.data());
-                const key = `tennis-match-history-${eventId}`;
-                let localMatches = [];
-                try { localMatches = JSON.parse(localStorage.getItem(key)) || []; } catch (e) { localMatches = []; }
-                
-                const localIds = new Set(localMatches.map(m => String(m.id)));
-                let addedMatches = 0;
-                
-                for (const fbMatch of firebaseMatches) {
-                    if (fbMatch.id && !localIds.has(String(fbMatch.id))) {
-                        localMatches.push(fbMatch);
-                        localIds.add(String(fbMatch.id));
-                        addedMatches++;
-                    }
-                }
-                
-                if (addedMatches > 0) {
-                    localMatches.sort((a, b) => new Date(b.date) - new Date(a.date));
-                    if (localMatches.length > 100) localMatches = localMatches.slice(0, 100);
-                    localStorage.setItem(key, JSON.stringify(localMatches));
-                    console.log(`[FirebaseSync] Synced ${addedMatches} matches from Firebase`);
+            let uploadedMatches = 0;
+            for (const lm of localMatches) {
+                if (lm.id && !firebaseMatchIds.has(String(lm.id))) {
+                    await this.db.collection('events').doc(eventId)
+                        .collection('matches').doc(String(lm.id)).set({
+                            ...lm,
+                            lastModified: Date.now()
+                        });
+                    uploadedMatches++;
                 }
             }
+            if (uploadedMatches > 0) {
+                console.log(`[FirebaseSync] 📤 Uploaded ${uploadedMatches} new local matches to Firebase`);
+            }
 
+            // STEP B: Now download everything from Firebase and REPLACE local data
+            console.log('[FirebaseSync] 📥 Downloading Firebase data (source of truth)...');
+            
+            // Re-fetch members (now includes newly uploaded ones)
+            const freshMembersSnapshot = await this.db.collection('events').doc(eventId)
+                .collection('members').get();
+            
+            const firebaseMembers = freshMembersSnapshot.docs
+                .map(doc => doc.data())
+                .filter(m => m.name && !m.deletedAt); // Exclude any corrupted/deleted docs
+            
+            console.log(`[FirebaseSync] 📋 Firebase members (source of truth): ${firebaseMembers.length} -`, firebaseMembers.map(m => m.name));
+            
+            // REPLACE local members with Firebase data
+            const membersKey = `tennis-members-${eventId}`;
+            const cleanMembers = firebaseMembers.map(m => ({
+                id: m.id || `mbr_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                name: m.name,
+                createdDate: m.createdDate || new Date().toISOString()
+            }));
+            localStorage.setItem(membersKey, JSON.stringify(cleanMembers));
+            this.app?.memberManager?.onEventChanged();
+            this.app?.populateMemberPickers?.();
+
+            // Re-fetch matches and REPLACE local history
+            const freshMatchesSnapshot = await this.db.collection('events').doc(eventId)
+                .collection('matches').get();
+            
+            let firebaseMatches = freshMatchesSnapshot.docs.map(doc => doc.data());
+            firebaseMatches.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            if (firebaseMatches.length > 100) firebaseMatches = firebaseMatches.slice(0, 100);
+            
+            console.log(`[FirebaseSync] 📋 Firebase matches (source of truth): ${firebaseMatches.length}`);
+            localStorage.setItem(historyKey, JSON.stringify(firebaseMatches));
+
+            console.log('[FirebaseSync] ✅ Sync complete. Firebase is source of truth.');
             this._updateSyncStatus(true);
         } catch (e) {
-            console.warn('[FirebaseSync] Failed to load from Firebase:', e);
+            console.warn('[FirebaseSync] ❌ Sync failed:', e);
         }
     }
 
